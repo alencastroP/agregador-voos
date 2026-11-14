@@ -42,6 +42,43 @@ services:
     ports:
       - "3003:3000"
 
+  # ---------------------------------------------------------------- agregador
+  # A API desenvolvida no desafio. Dentro da rede do compose os providers são acessados
+  # pelo NOME DO SERVIÇO e pela porta interna 3000 (não localhost:3001-3003).
+  aggregator:
+    build:
+      context: ./aggregator
+      network: host
+    image: ${AGGREGATOR_IMAGE:-agregador-voos-aggregator:local}
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_VERSION: ${APP_VERSION:-local}
+      PROVIDER_A_URL: http://provider-a:3000/provider-a/search
+      PROVIDER_B_URL: http://provider-b:3000/provider-b/search
+      PROVIDER_C_URL: http://provider-c:3000/provider-c/search
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://aggregator:${POSTGRES_PASSWORD:-aggregator}@postgres:5432/aggregator
+      # Vazio = tracing desligado; `make obs` aponta para o Jaeger.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      SHUTDOWN_GRACE_MS: "2000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      provider-a:
+        condition: service_started
+      provider-b:
+        condition: service_started
+      provider-c:
+        condition: service_started
+    stop_grace_period: 15s
+    restart: unless-stopped
+
   # ----------------------------------------------------------- infraestrutura
   # Redis como CACHE puro: sem persistência em disco (perder o cache num restart é
   # aceitável: ele se reconstrói em 5 min) e com teto de memória + LRU, para nunca
@@ -106,8 +143,6 @@ services:
       - --storage.tsdb.retention.time=7d
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
 

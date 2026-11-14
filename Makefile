@@ -49,8 +49,8 @@ chaos:         ## provider-c derrubando ~21% e pendurando ~30% das chamadas
 calm:          ## desliga o chaos (recria o provider-c com a config original)
 	docker compose up -d --no-deps provider-c
 
-obs:           ## sobe tudo + Jaeger (16686) e Prometheus (9090)
-	docker compose --profile observability up -d --build
+obs:           ## sobe tudo + Jaeger (16686), Prometheus (9090) e Grafana (3000)
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile observability up -d --build
 
 obs-down:
 	docker compose --profile observability down

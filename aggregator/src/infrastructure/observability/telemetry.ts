@@ -1,8 +1,18 @@
-import { SpanStatusCode, trace, type Span, type Tracer as OtelApiTracer } from '@opentelemetry/api';
+import {
+  context,
+  propagation,
+  SpanStatusCode,
+  trace,
+  type Span,
+  type Tracer as OtelApiTracer,
+} from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
 import { resourceFromAttributes } from '@opentelemetry/resources';
-import { NodeSDK } from '@opentelemetry/sdk-node';
+import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import type { SpanAttributes, SpanHandle, Tracer } from '../../application/ports/tracer.js';
 
@@ -18,27 +28,45 @@ export interface Telemetry {
 }
 
 /**
- * Inicia o SDK do OpenTelemetry com exportação OTLP/HTTP (o Jaeger recebe OTLP na 4318).
- *
- * Instrumentação: spans MANUAIS no use case (busca, provider, cache) via port Tracer +
- * UndiciInstrumentation, que cobre o fetch dos providers via diagnostics_channel. Sem
- * auto-instrumentação de http/fastify: em ESM ela exige loader hooks (import-in-the-middle)
- * frágeis; os spans manuais dão um trace mais limpo e com atributos de negócio.
+ * Liga o tracing com a montagem MÍNIMA (o que o NodeSDK faria por dentro, sem trazer
+ * exportadores de métricas/logs/gRPC que não usamos: −30 MB de dependências na imagem):
+ *   provider + BatchSpanProcessor → OTLP/HTTP (Jaeger na 4318),
+ *   context manager (AsyncLocalStorage) para spans aninhados,
+ *   propagador W3C (traceparent nas chamadas aos providers),
+ *   instrumentação do undici (fetch) via diagnostics_channel.
+ * Spans de negócio (busca, provider, cache) são MANUAIS via port Tracer. Sem auto-instrumentação
+ * de http/fastify: em ESM ela exige loader hooks (import-in-the-middle) frágeis.
  */
 export function startTelemetry(options: TelemetryOptions): Telemetry | null {
   if (!options.endpoint) return null;
-  const sdk = new NodeSDK({
+
+  const provider = new TracerProvider({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: options.serviceName,
       [ATTR_SERVICE_VERSION]: options.serviceVersion,
     }),
-    traceExporter: new OTLPTraceExporter({
-      url: `${options.endpoint.replace(/\/$/, '')}/v1/traces`,
-    }),
+    spanProcessors: [
+      new BatchSpanProcessor({
+        exporter: new OTLPTraceExporter({
+          url: `${options.endpoint.replace(/\/$/, '')}/v1/traces`,
+        }),
+      }),
+    ],
+  });
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+  propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+  trace.setGlobalTracerProvider(provider);
+  const unregister = registerInstrumentations({
+    tracerProvider: provider,
     instrumentations: [new UndiciInstrumentation()],
   });
-  sdk.start();
-  return { shutdown: () => sdk.shutdown() };
+
+  return {
+    shutdown: async () => {
+      unregister();
+      await provider.shutdown(); // flush dos spans pendentes
+    },
+  };
 }
 
 function handle(span: Span): SpanHandle {

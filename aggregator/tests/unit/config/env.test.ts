@@ -32,4 +32,20 @@ describe('loadConfig', () => {
       expect(problems).toMatch(/PORT/);
     }
   });
+
+  it('treats empty optional URLs as unset (compose passes ${VAR:-})', () => {
+    const config = loadConfig({
+      ...valid,
+      REDIS_URL: '',
+      DATABASE_URL: '',
+      OTEL_EXPORTER_OTLP_ENDPOINT: '',
+    });
+    expect(config.cache.redisUrl).toBeUndefined();
+    expect(config.database.url).toBeUndefined();
+    expect(config.telemetry.otlpEndpoint).toBeUndefined();
+  });
+
+  it('still rejects a malformed optional URL', () => {
+    expect(() => loadConfig({ ...valid, REDIS_URL: 'not a url' })).toThrow(ConfigError);
+  });
 });

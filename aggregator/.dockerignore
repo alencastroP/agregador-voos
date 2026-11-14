@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+tests
+scripts
+.husky
+.env
+.env.*
+*.md
+*.log
+.prettierrc.json
+.prettierignore
+eslint.config.js
+commitlint.config.js
+vitest.config.ts
+drizzle.config.ts

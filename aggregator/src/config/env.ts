@@ -6,6 +6,9 @@ import { STRATEGY_NAMES, type StrategyName } from '../domain/selection/strategy.
  * melhor falhar no deploy do que descobrir em produção que a URL do provider-b é undefined.
  * Todas as URLs vêm daqui (dentro do compose: http://provider-a:3000/..., fora: localhost:3001).
  */
+/** Variável vazia ("") conta como não definida: o compose passa `${VAR:-}` para opcionais. */
+const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), z.url().optional());
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -16,7 +19,7 @@ const EnvSchema = z.object({
   SHUTDOWN_GRACE_MS: z.coerce.number().int().nonnegative().default(0),
 
   /** OTLP/HTTP (Jaeger: http://jaeger:4318). Sem endpoint, tracing desligado. */
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   OTEL_SERVICE_NAME: z.string().default('flight-aggregator'),
 
   PROVIDER_A_URL: z.url(),
@@ -41,11 +44,11 @@ const EnvSchema = z.object({
   CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(300),
   PARTIAL_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(30),
   /** Sem REDIS_URL o serviço sobe com cache em memória (dev) e avisa no log. */
-  REDIS_URL: z.url().optional(),
+  REDIS_URL: optionalUrl,
   REDIS_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(200),
 
   /** Persistência analítica. Sem DATABASE_URL a busca funciona, só não grava insights. */
-  DATABASE_URL: z.url().optional(),
+  DATABASE_URL: optionalUrl,
   DB_POOL_MAX: z.coerce.number().int().positive().default(5),
   DB_MIGRATE_ON_BOOT: z
     .enum(['true', 'false'])
