@@ -20,6 +20,9 @@ const EnvSchema = z.object({
 
   CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(300),
   PARTIAL_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(30),
+  /** Sem REDIS_URL o serviço sobe com cache em memória (dev) e avisa no log. */
+  REDIS_URL: z.url().optional(),
+  REDIS_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(200),
 
   /** Fuso que define "hoje" na validação de data passada. */
   BUSINESS_TIMEZONE: z.string().default('America/Sao_Paulo'),
@@ -42,7 +45,12 @@ export interface AppConfig {
     readonly timeoutMs: number;
     readonly urls: { readonly a: string; readonly b: string; readonly c: string };
   };
-  readonly cache: { readonly ttlSeconds: number; readonly partialTtlSeconds: number };
+  readonly cache: {
+    readonly ttlSeconds: number;
+    readonly partialTtlSeconds: number;
+    readonly redisUrl: string | undefined;
+    readonly redisCommandTimeoutMs: number;
+  };
   readonly search: { readonly timezone: string; readonly maxDaysAhead: number };
   readonly selection: {
     readonly strategy: StrategyName;
@@ -87,7 +95,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: e.PROVIDER_TIMEOUT_MS,
       urls: { a: e.PROVIDER_A_URL, b: e.PROVIDER_B_URL, c: e.PROVIDER_C_URL },
     },
-    cache: { ttlSeconds: e.CACHE_TTL_SECONDS, partialTtlSeconds: e.PARTIAL_CACHE_TTL_SECONDS },
+    cache: {
+      ttlSeconds: e.CACHE_TTL_SECONDS,
+      partialTtlSeconds: e.PARTIAL_CACHE_TTL_SECONDS,
+      redisUrl: e.REDIS_URL,
+      redisCommandTimeoutMs: e.REDIS_COMMAND_TIMEOUT_MS,
+    },
     search: { timezone: e.BUSINESS_TIMEZONE, maxDaysAhead: e.SEARCH_MAX_DAYS_AHEAD },
     selection: {
       strategy: e.SELECTION_STRATEGY,

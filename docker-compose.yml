@@ -42,4 +42,27 @@ services:
     ports:
       - "3003:3000"
 
- 
+  # ----------------------------------------------------------- infraestrutura
+  # Redis como CACHE puro: sem persistência em disco (perder o cache num restart é
+  # aceitável: ele se reconstrói em 5 min) e com teto de memória + LRU, para nunca
+  # crescer sem limite. Porta só em 127.0.0.1: acessível para dev local, nunca
+  # exposta na interface pública da VM.
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10

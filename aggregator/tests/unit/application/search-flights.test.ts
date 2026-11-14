@@ -219,6 +219,37 @@ describe('SearchFlights: cache', () => {
     expect(recovered.meta).toMatchObject({ cached: false, partial: false });
   });
 
+  it('coalesces concurrent identical searches into ONE provider round-trip (stampede)', async () => {
+    const slow = (
+      id: 'provider-a' | 'provider-b' | 'provider-c',
+      result: () => ProviderSearchResult,
+    ) => new FakeProvider(id, { kind: 'ok', result, delayMs: 50 });
+    const providers = [
+      slow('provider-a', realA),
+      slow('provider-b', realB),
+      slow('provider-c', realC),
+    ];
+    const records: string[] = [];
+    const search = useCase({
+      providers,
+      repository: {
+        save: (r) => {
+          records.push(r.searchId);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => search.execute(input, ctx)),
+    );
+
+    expect(providers.map((p) => p.calls)).toEqual([1, 1, 1]); // 10 buscas, 3 chamadas
+    expect(new Set(responses.map((r) => r.searchId)).size).toBe(10); // cada busca é um evento
+    expect(responses.every((r) => r.results.length === 60)).toBe(true);
+    expect(records).toHaveLength(10); // demanda registrada por requisição
+  });
+
   it('uses a cache key that includes the strategy fingerprint', () => {
     expect(searchCacheKey(query(), 'balanced:150:2500:0')).toBe(
       'search:v1:GRU:GIG:2026-12-12:balanced:150:2500:0',

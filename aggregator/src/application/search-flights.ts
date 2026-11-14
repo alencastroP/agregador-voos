@@ -24,6 +24,7 @@ import {
   type SearchResponse,
   type SearchSnapshot,
 } from './search-response.js';
+import { SingleFlight } from './single-flight.js';
 import { parseSearchInput, type SearchValidationRules } from './validate-search.js';
 
 export interface SearchFlightsConfig extends SearchValidationRules {
@@ -70,6 +71,7 @@ export function searchCacheKey(query: SearchQuery, strategyFingerprint: string):
 export class SearchFlights {
   private readonly newId: () => string;
   private readonly isEnabled: (id: ProviderId) => boolean;
+  private readonly inflight = new SingleFlight<SearchSnapshot>();
 
   constructor(private readonly deps: SearchFlightsDeps) {
     this.newId = deps.newId ?? randomUUID;
@@ -97,6 +99,40 @@ export class SearchFlights {
       return toResponse(searchId, cached, true);
     }
 
+    // Single-flight: buscas idênticas simultâneas compartilham UMA ida aos providers.
+    const { value: snapshot, leader } = await this.inflight.run(key, () =>
+      this.compute(query, strategy, key, logger, log),
+    );
+    this.persist(this.record(searchId, query, snapshot, false, started), logger);
+
+    if (!snapshot.providers.some((r) => r.status === 'ok')) {
+      throw new AllProvidersFailedError(
+        `nenhum provider respondeu: ${snapshot.providers.map((r) => `${r.name}=${r.status}`).join(', ')}`,
+      );
+    }
+    logger.info(
+      {
+        ...log,
+        cacheHit: false,
+        coalesced: !leader,
+        partial: snapshot.partial,
+        results: snapshot.results.length,
+        latencyMs: Math.round(performance.now() - started),
+        providers: snapshot.providers.map((r) => `${r.name}:${r.status}:${r.latencyMs}ms`),
+      },
+      'search completed',
+    );
+    return toResponse(searchId, snapshot, false);
+  }
+
+  /** Ida aos providers + seleção + cache. Roda UMA vez por chave em andamento (single-flight). */
+  private async compute(
+    query: SearchQuery,
+    strategy: OfferSelectionStrategy,
+    key: string,
+    logger: Logger,
+    log: object,
+  ): Promise<SearchSnapshot> {
     // allSettled e não all: Promise.all rejeitaria no PRIMEIRO provider que falhasse e
     // jogaria fora o resultado dos outros. callProvider já converte falha em relatório;
     // allSettled é a garantia extra caso algo inesperado escape.
@@ -108,37 +144,20 @@ export class SearchFlights {
     );
     const reports = outcomes.map((o) => o.report);
 
-    const failed = reports.filter((r) => r.status !== 'ok' && r.status !== 'disabled');
     if (!reports.some((r) => r.status === 'ok')) {
-      const snapshot = this.snapshot(query, [], true, strategy, reports);
-      this.persist(this.record(searchId, query, snapshot, false, started), logger);
-      throw new AllProvidersFailedError(
-        `nenhum provider respondeu: ${reports.map((r) => `${r.name}=${r.status}`).join(', ')}`,
-      );
+      return this.snapshot(query, [], true, strategy, reports); // nada a cachear
     }
 
+    const failed = reports.some((r) => r.status !== 'ok' && r.status !== 'disabled');
     const results = sortResults(
       selectOffers(
         outcomes.flatMap((o) => o.offers),
         strategy,
       ),
     ).map(({ offer, selection }) => ({ ...offer, selection }));
-    const snapshot = this.snapshot(query, results, failed.length > 0, strategy, reports);
-
+    const snapshot = this.snapshot(query, results, failed, strategy, reports);
     await this.writeCache(key, snapshot, logger);
-    this.persist(this.record(searchId, query, snapshot, false, started), logger);
-    logger.info(
-      {
-        ...log,
-        cacheHit: false,
-        partial: snapshot.partial,
-        results: results.length,
-        latencyMs: Math.round(performance.now() - started),
-        providers: reports.map((r) => `${r.name}:${r.status}:${r.latencyMs}ms`),
-      },
-      'search completed',
-    );
-    return toResponse(searchId, snapshot, false);
+    return snapshot;
   }
 
   private async callProvider(
