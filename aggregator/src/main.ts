@@ -12,6 +12,17 @@ import {
   RedisSearchCache,
   waitForRedis,
 } from './infrastructure/cache/redis-search-cache.js';
+import {
+  providersIndicator,
+  redisIndicator,
+  withTimeout,
+} from './infrastructure/observability/health-indicators.js';
+import { Metrics } from './infrastructure/observability/metrics.js';
+import {
+  activeTraceIds,
+  OtelTracer,
+  startTelemetry,
+} from './infrastructure/observability/telemetry.js';
 import { NoopSearchRepository } from './infrastructure/persistence/noop-search-repository.js';
 import { createResilientProviders } from './infrastructure/providers/create-providers.js';
 import { buildApp } from './interfaces/http/app.js';
@@ -19,6 +30,15 @@ import { buildApp } from './interfaces/http/app.js';
 async function main(): Promise<void> {
   const config = loadConfig();
   const clock = systemClock;
+
+  // Telemetria ANTES de qualquer fetch: a instrumentação do undici precisa estar registrada.
+  const telemetry = startTelemetry({
+    endpoint: config.telemetry.otlpEndpoint,
+    serviceName: config.telemetry.serviceName,
+    serviceVersion: config.version,
+  });
+  const tracer = new OtelTracer();
+  const metrics = new Metrics();
 
   const { strategy: name, ...balanced } = config.selection;
   const strategy = createStrategy(name, balanced);
@@ -38,7 +58,7 @@ async function main(): Promise<void> {
 
   // Logger do app ainda não existe aqui: transições de circuito são registradas depois do build.
   let onCircuitTransition: (provider: string, from: string, to: string) => void = () => undefined;
-  const { providers } = createResilientProviders(config.providers.urls, {
+  const { providers, breakers } = createResilientProviders(config.providers.urls, {
     retry: { ...config.providers.retry, budgetMs: config.providers.timeoutMs },
     circuitBreaker: config.providers.circuitBreaker,
     clock,
@@ -46,6 +66,7 @@ async function main(): Promise<void> {
       onCircuitTransition(provider, from, to);
     },
   });
+  metrics.trackCircuits(breakers);
 
   const searchFlights = new SearchFlights({
     providers,
@@ -53,6 +74,8 @@ async function main(): Promise<void> {
     cache,
     repository: new NoopSearchRepository(),
     clock,
+    observer: metrics.observer(),
+    tracer,
     config: {
       providerTimeoutMs: config.providers.timeoutMs,
       cacheTtlSeconds: config.cache.ttlSeconds,
@@ -62,15 +85,32 @@ async function main(): Promise<void> {
     },
   });
 
-  const app = buildApp({ config, searchFlights });
+  let draining = false;
+  const app = buildApp({
+    config,
+    searchFlights,
+    health: {
+      indicators: [withTimeout(redisIndicator(redis), 500), providersIndicator(breakers)],
+      isDraining: () => draining,
+      version: config.version,
+    },
+    observability: { metrics, tracer, logMixin: activeTraceIds },
+  });
   onCircuitTransition = (provider, from, to) => {
     app.log.warn({ provider, from, to }, 'circuit breaker transition');
   };
 
+  /**
+   * Graceful shutdown em etapas: (1) readiness → 503 e espera o LB tirar a instância,
+   * (2) fecha o servidor drenando requisições em curso, (3) fecha Redis e faz flush dos traces.
+   */
   const shutdown = async (signal: string): Promise<void> => {
-    app.log.info({ signal }, 'shutting down');
-    await app.close(); // para de aceitar conexões e drena as em andamento
+    draining = true;
+    app.log.info({ signal, graceMs: config.shutdownGraceMs }, 'shutting down');
+    await new Promise((resolve) => setTimeout(resolve, config.shutdownGraceMs));
+    await app.close();
     await redis?.quit().catch(() => undefined);
+    await telemetry?.shutdown().catch(() => undefined);
     process.exit(0);
   };
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
@@ -78,7 +118,12 @@ async function main(): Promise<void> {
 
   await app.listen({ host: config.http.host, port: config.http.port });
   app.log.info(
-    { strategy: strategy.fingerprint, cache: redis ? 'redis' : 'in-memory' },
+    {
+      version: config.version,
+      strategy: strategy.fingerprint,
+      cache: redis ? 'redis' : 'in-memory',
+      tracing: telemetry ? config.telemetry.otlpEndpoint : 'disabled',
+    },
     'aggregator ready',
   );
   if (!redis) app.log.warn('REDIS_URL not set: using in-memory cache (single instance only)');

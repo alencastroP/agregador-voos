@@ -11,6 +11,13 @@ const EnvSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(8000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  APP_VERSION: z.string().default('0.1.0'),
+  /** Readiness cai, espera este tempo (o LB tira a instância) e só então fecha o servidor. */
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().nonnegative().default(0),
+
+  /** OTLP/HTTP (Jaeger: http://jaeger:4318). Sem endpoint, tracing desligado. */
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
+  OTEL_SERVICE_NAME: z.string().default('flight-aggregator'),
 
   PROVIDER_A_URL: z.url(),
   PROVIDER_B_URL: z.url(),
@@ -54,6 +61,9 @@ export interface AppConfig {
   readonly env: Env['NODE_ENV'];
   readonly http: { readonly host: string; readonly port: number };
   readonly logLevel: Env['LOG_LEVEL'];
+  readonly version: string;
+  readonly shutdownGraceMs: number;
+  readonly telemetry: { readonly otlpEndpoint: string | undefined; readonly serviceName: string };
   readonly providers: {
     readonly timeoutMs: number;
     readonly urls: { readonly a: string; readonly b: string; readonly c: string };
@@ -117,6 +127,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     env: e.NODE_ENV,
     http: { host: e.HOST, port: e.PORT },
     logLevel: e.LOG_LEVEL,
+    version: e.APP_VERSION,
+    shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
+    telemetry: { otlpEndpoint: e.OTEL_EXPORTER_OTLP_ENDPOINT, serviceName: e.OTEL_SERVICE_NAME },
     providers: {
       timeoutMs: e.PROVIDER_TIMEOUT_MS,
       urls: { a: e.PROVIDER_A_URL, b: e.PROVIDER_B_URL, c: e.PROVIDER_C_URL },

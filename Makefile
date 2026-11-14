@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load
+.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load obs obs-down
 
 up:            ## sobe tudo (providers + redis + agregador)
 	docker compose up -d --build
@@ -48,6 +48,12 @@ chaos:         ## provider-c derrubando ~21% e pendurando ~30% das chamadas
 
 calm:          ## desliga o chaos (recria o provider-c com a config original)
 	docker compose up -d --no-deps provider-c
+
+obs:           ## sobe tudo + Jaeger (16686) e Prometheus (9090)
+	docker compose --profile observability up -d --build
+
+obs-down:
+	docker compose --profile observability down
 
 simulate:      ## compara as estratégias de seleção sobre buscas reais dos mocks
 	cd aggregator && npm run simulate

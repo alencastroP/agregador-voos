@@ -1,0 +1,15 @@
+# Prometheus do profile `observability` (make obs).
+# Raspa o /metrics do agregador a cada 5 s (dentro da rede do compose: aggregator:8000).
+# O alvo host.docker.internal:8000 cobre o agregador rodando FORA do Docker (npm run dev).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: flight-aggregator
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["aggregator:8000"]
+        labels: { env: compose }
+      - targets: ["host.docker.internal:8000"]
+        labels: { env: local-dev }

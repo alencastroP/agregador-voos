@@ -17,6 +17,8 @@ import type { Clock } from './ports/clock.js';
 import type { FlightProvider } from './ports/flight-provider.js';
 import type { Logger } from './ports/logger.js';
 import type { SearchCache } from './ports/search-cache.js';
+import { noopObserver, type SearchObserver } from './ports/search-observer.js';
+import { noopTracer, type Tracer } from './ports/tracer.js';
 import type { SearchRecord, SearchRepository } from './ports/search-repository.js';
 import {
   toResponse,
@@ -48,6 +50,10 @@ export interface SearchFlightsDeps {
   readonly clock: Clock;
   readonly config: SearchFlightsConfig;
   readonly newId?: () => string;
+  /** Métricas (Prometheus em produção). Default: no-op. */
+  readonly observer?: SearchObserver;
+  /** Tracing (OpenTelemetry em produção). Default: no-op. */
+  readonly tracer?: Tracer;
 }
 
 export interface SearchContext {
@@ -73,13 +79,34 @@ export class SearchFlights {
   private readonly newId: () => string;
   private readonly isEnabled: (id: ProviderId) => boolean;
   private readonly inflight = new SingleFlight<SearchSnapshot>();
+  private readonly observer: SearchObserver;
+  private readonly tracer: Tracer;
 
   constructor(private readonly deps: SearchFlightsDeps) {
     this.newId = deps.newId ?? randomUUID;
     this.isEnabled = deps.isProviderEnabled ?? (() => true);
+    this.observer = deps.observer ?? noopObserver;
+    this.tracer = deps.tracer ?? noopTracer;
   }
 
-  async execute(rawInput: unknown, { logger }: SearchContext): Promise<SearchResponse> {
+  execute(rawInput: unknown, context: SearchContext): Promise<SearchResponse> {
+    return this.tracer.withSpan('search', {}, async (span) => {
+      const response = await this.run(rawInput, context);
+      span.setAttributes({
+        'search.id': response.searchId,
+        'search.origin': response.query.origin,
+        'search.destination': response.query.destination,
+        'search.date': response.query.date,
+        'search.cached': response.meta.cached,
+        'search.partial': response.meta.partial,
+        'search.results': response.meta.resultsCount,
+        'search.strategy': response.meta.strategy,
+      });
+      return response;
+    });
+  }
+
+  private async run(rawInput: unknown, { logger }: SearchContext): Promise<SearchResponse> {
     const started = performance.now();
     const { clock, config } = this.deps;
     const query = parseSearchInput(rawInput, clock, config);
@@ -97,6 +124,7 @@ export class SearchFlights {
     if (cached) {
       logger.info({ ...log, cacheHit: true }, 'search served from cache');
       this.persist(this.record(searchId, query, cached, true, started), logger);
+      this.observer.searchServed(cached.partial ? 'partial' : 'ok', true, cached.results);
       return toResponse(searchId, cached, true);
     }
 
@@ -105,8 +133,10 @@ export class SearchFlights {
       this.compute(query, strategy, key, logger, log),
     );
     this.persist(this.record(searchId, query, snapshot, false, started), logger);
+    if (!leader) this.observer.searchCoalesced();
 
     if (!snapshot.providers.some((r) => r.status === 'ok')) {
+      this.observer.searchServed('all_failed', false, []);
       throw new AllProvidersFailedError(
         `nenhum provider respondeu: ${snapshot.providers.map((r) => `${r.name}=${r.status}`).join(', ')}`,
       );
@@ -123,6 +153,7 @@ export class SearchFlights {
       },
       'search completed',
     );
+    this.observer.searchServed(snapshot.partial ? 'partial' : 'ok', false, snapshot.results);
     return toResponse(searchId, snapshot, false);
   }
 
@@ -161,7 +192,34 @@ export class SearchFlights {
     return snapshot;
   }
 
-  private async callProvider(
+  /** Um span por provider: no Jaeger, o fetch (undici) aparece como filho deste span. */
+  private callProvider(
+    provider: FlightProvider,
+    query: SearchQuery,
+    logger: Logger,
+    log: object,
+  ): Promise<ProviderOutcome> {
+    return this.tracer.withSpan(
+      `provider ${provider.id}`,
+      { 'provider.name': provider.id },
+      async (span) => {
+        const outcome = await this.callProviderUntraced(provider, query, logger, log);
+        const r = outcome.report;
+        span.setAttributes({
+          'provider.status': r.status,
+          'provider.latency_ms': r.latencyMs,
+          'provider.attempts': r.attempts,
+          'provider.offers': r.offersCount,
+          'provider.discarded': r.discardedCount,
+        });
+        if (r.status !== 'ok' && r.status !== 'disabled') span.recordError(r.errorCode ?? r.status);
+        this.observer.providerCall(r);
+        return outcome;
+      },
+    );
+  }
+
+  private async callProviderUntraced(
     provider: FlightProvider,
     query: SearchQuery,
     logger: Logger,
@@ -183,6 +241,8 @@ export class SearchFlights {
         budgetMs,
       );
       const latencyMs = Math.round(performance.now() - started);
+      for (const d of result.discarded) this.observer.offersDiscarded(provider.id, d.reason);
+      for (const name of result.unknownAirlines) this.observer.unknownAirline(provider.id, name);
       if (result.discarded.length > 0) {
         logger.warn(
           {
@@ -264,24 +324,39 @@ export class SearchFlights {
     };
   }
 
-  private async readCache(key: string, logger: Logger): Promise<SearchSnapshot | null> {
-    try {
-      return await this.deps.cache.get(key);
-    } catch (error) {
-      logger.warn({ err: error, key }, 'cache read failed, continuing without cache');
-      return null;
-    }
+  private readCache(key: string, logger: Logger): Promise<SearchSnapshot | null> {
+    return this.tracer.withSpan('cache.get', { 'cache.key': key }, async (span) => {
+      try {
+        const value = await this.deps.cache.get(key);
+        this.observer.cacheLookup(value ? 'hit' : 'miss');
+        span.setAttributes({ 'cache.hit': value !== null });
+        return value;
+      } catch (error) {
+        this.observer.cacheLookup('error');
+        span.recordError(error);
+        logger.warn({ err: error, key }, 'cache read failed, continuing without cache');
+        return null;
+      }
+    });
   }
 
   private async writeCache(key: string, snapshot: SearchSnapshot, logger: Logger): Promise<void> {
     const { cacheTtlSeconds, partialCacheTtlSeconds } = this.deps.config;
     const ttl = snapshot.partial ? partialCacheTtlSeconds : cacheTtlSeconds;
     if (ttl <= 0) return;
-    try {
-      await this.deps.cache.set(key, snapshot, ttl);
-    } catch (error) {
-      logger.warn({ err: error, key }, 'cache write failed, response still served');
-    }
+    await this.tracer.withSpan(
+      'cache.set',
+      { 'cache.key': key, 'cache.ttl_s': ttl },
+      async (span) => {
+        try {
+          await this.deps.cache.set(key, snapshot, ttl);
+        } catch (error) {
+          this.observer.cacheWriteFailed();
+          span.recordError(error);
+          logger.warn({ err: error, key }, 'cache write failed, response still served');
+        }
+      },
+    );
   }
 
   private record(
@@ -307,6 +382,7 @@ export class SearchFlights {
   /** Fire-and-forget: a persistência analítica nunca atrasa nem derruba a resposta. */
   private persist(record: SearchRecord, logger: Logger): void {
     this.deps.repository.save(record).catch((error: unknown) => {
+      this.observer.persistenceFailed();
       logger.error({ err: error, searchId: record.searchId }, 'search persistence failed');
     });
   }
