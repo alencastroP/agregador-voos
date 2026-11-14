@@ -1,6 +1,6 @@
 # ADR 0004: Estratégia de seleção de ofertas (banda de tolerância)
 
-- **Status:** proposto (τ e k aguardam decisão no checkpoint da Fase 3)
+- **Status:** aceito (checkpoint da Fase 3: τ = 1,5%, teto R$ 25, **k = 0**)
 - **Data:** 2026-11-14
 
 ## Contexto
@@ -95,7 +95,13 @@ R$ 25 não morde neste dataset (200 trocas A→C medidas em 20 buscas: delta ent
 R$ 12,79, mediana R$ 9,07; passagens de R$ 406 a R$ 1.132), mas protege passagens acima de
 ~R$ 2.080 (25 / 1,2%), onde 1,2% já vira dinheiro que o cliente sente.
 
-### Decisão em aberto (checkpoint): k = 0 ou k = 1?
+### k = 0 ou k = 1? Decidido: **k = 0** (aceita a troca A→C)
+
+Motivo: o enunciado pede para **maximizar** o resultado do negócio, com o limite de não
+prejudicar **significativamente** o cliente. Uma diferença de +1,2% (mediana de R$ 9,07),
+limitada por τ e pelo teto absoluto, fica dentro da variação normal de tarifa. O argumento
+contrário (o cliente perde R$ 1,17 por R$ 1 ganho) está registrado abaixo. k continua
+configurável por feature flag, para um A/B ou para endurecer a regra sem deploy.
 
 | | k = 0 (aceita A→C) | k = 1 (conservador) |
 |---|---|---|
