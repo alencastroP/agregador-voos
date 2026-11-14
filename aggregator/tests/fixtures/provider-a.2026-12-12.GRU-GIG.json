@@ -1,0 +1,244 @@
+{
+  "flights": [
+    {
+      "company": "LATAM",
+      "price": 796.33,
+      "depart_at": "2026-12-12T08:00:00",
+      "arrive_at": "2026-12-12T11:10:00"
+    },
+    {
+      "company": "GOL",
+      "price": 820.41,
+      "depart_at": "2026-12-12T08:50:00",
+      "arrive_at": "2026-12-12T12:05:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 465.92,
+      "depart_at": "2026-12-12T22:30:00",
+      "arrive_at": "2026-12-13T01:15:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 548.51,
+      "depart_at": "2026-12-12T05:00:00",
+      "arrive_at": "2026-12-12T06:00:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 612.06,
+      "depart_at": "2026-12-12T05:38:00",
+      "arrive_at": "2026-12-12T07:24:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 651.62,
+      "depart_at": "2026-12-12T06:16:00",
+      "arrive_at": "2026-12-12T08:48:00"
+    },
+    {
+      "company": "GOL",
+      "price": 641.18,
+      "depart_at": "2026-12-12T06:35:00",
+      "arrive_at": "2026-12-12T09:30:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 839.16,
+      "depart_at": "2026-12-12T07:13:00",
+      "arrive_at": "2026-12-12T08:24:00"
+    },
+    {
+      "company": "GOL",
+      "price": 863.38,
+      "depart_at": "2026-12-12T07:32:00",
+      "arrive_at": "2026-12-12T09:06:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 996.88,
+      "depart_at": "2026-12-12T08:10:00",
+      "arrive_at": "2026-12-12T10:30:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 854.35,
+      "depart_at": "2026-12-12T08:29:00",
+      "arrive_at": "2026-12-12T11:12:00"
+    },
+    {
+      "company": "GOL",
+      "price": 975.76,
+      "depart_at": "2026-12-12T08:48:00",
+      "arrive_at": "2026-12-12T11:54:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 890.31,
+      "depart_at": "2026-12-12T09:26:00",
+      "arrive_at": "2026-12-12T10:48:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 722.5,
+      "depart_at": "2026-12-12T10:04:00",
+      "arrive_at": "2026-12-12T12:12:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 892.48,
+      "depart_at": "2026-12-12T10:23:00",
+      "arrive_at": "2026-12-12T12:54:00"
+    },
+    {
+      "company": "GOL",
+      "price": 872.92,
+      "depart_at": "2026-12-12T11:01:00",
+      "arrive_at": "2026-12-12T14:18:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 441.38,
+      "depart_at": "2026-12-12T11:20:00",
+      "arrive_at": "2026-12-12T12:30:00"
+    },
+    {
+      "company": "GOL",
+      "price": 707.29,
+      "depart_at": "2026-12-12T11:58:00",
+      "arrive_at": "2026-12-12T13:54:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 764.35,
+      "depart_at": "2026-12-12T12:17:00",
+      "arrive_at": "2026-12-12T14:36:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 814.06,
+      "depart_at": "2026-12-12T12:36:00",
+      "arrive_at": "2026-12-12T15:18:00"
+    },
+    {
+      "company": "GOL",
+      "price": 794.51,
+      "depart_at": "2026-12-12T13:14:00",
+      "arrive_at": "2026-12-12T16:42:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 728.3,
+      "depart_at": "2026-12-12T13:52:00",
+      "arrive_at": "2026-12-12T15:36:00"
+    },
+    {
+      "company": "GOL",
+      "price": 749.39,
+      "depart_at": "2026-12-12T14:11:00",
+      "arrive_at": "2026-12-12T16:18:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 861.85,
+      "depart_at": "2026-12-12T14:49:00",
+      "arrive_at": "2026-12-12T17:42:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 855.47,
+      "depart_at": "2026-12-12T15:08:00",
+      "arrive_at": "2026-12-12T18:24:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 495.53,
+      "depart_at": "2026-12-12T15:46:00",
+      "arrive_at": "2026-12-12T17:18:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 772.89,
+      "depart_at": "2026-12-12T16:05:00",
+      "arrive_at": "2026-12-12T18:00:00"
+    },
+    {
+      "company": "GOL",
+      "price": 792.53,
+      "depart_at": "2026-12-12T16:24:00",
+      "arrive_at": "2026-12-12T18:42:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 1074.7,
+      "depart_at": "2026-12-12T17:02:00",
+      "arrive_at": "2026-12-12T20:06:00"
+    },
+    {
+      "company": "GOL",
+      "price": 835.26,
+      "depart_at": "2026-12-12T17:40:00",
+      "arrive_at": "2026-12-12T19:00:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 533.61,
+      "depart_at": "2026-12-12T17:59:00",
+      "arrive_at": "2026-12-12T19:42:00"
+    },
+    {
+      "company": "GOL",
+      "price": 851.43,
+      "depart_at": "2026-12-12T18:37:00",
+      "arrive_at": "2026-12-12T21:06:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 920.46,
+      "depart_at": "2026-12-12T18:56:00",
+      "arrive_at": "2026-12-12T21:48:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 772.37,
+      "depart_at": "2026-12-12T19:34:00",
+      "arrive_at": "2026-12-12T20:42:00"
+    },
+    {
+      "company": "GOL",
+      "price": 883.88,
+      "depart_at": "2026-12-12T19:53:00",
+      "arrive_at": "2026-12-12T21:24:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 479.71,
+      "depart_at": "2026-12-12T20:12:00",
+      "arrive_at": "2026-12-12T22:06:00"
+    },
+    {
+      "company": "GOL",
+      "price": 764.81,
+      "depart_at": "2026-12-12T20:50:00",
+      "arrive_at": "2026-12-12T23:30:00"
+    },
+    {
+      "company": "LATAM",
+      "price": 718.64,
+      "depart_at": "2026-12-12T21:28:00",
+      "arrive_at": "2026-12-13T00:54:00"
+    },
+    {
+      "company": "AZUL",
+      "price": 568.83,
+      "depart_at": "2026-12-12T21:47:00",
+      "arrive_at": "2026-12-12T23:06:00"
+    },
+    {
+      "company": "VOEPASS",
+      "price": 416.47,
+      "depart_at": "2026-12-12T22:25:00",
+      "arrive_at": "2026-12-13T00:30:00"
+    }
+  ]
+}
