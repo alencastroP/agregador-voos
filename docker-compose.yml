@@ -67,6 +67,26 @@ services:
       timeout: 2s
       retries: 10
 
+  # Postgres: persistência ANALÍTICA das buscas (alimenta o dashboard de insights).
+  # O agregador aplica as migrations no boot; o Grafana lê com um papel somente leitura
+  # (observability/postgres/init). Porta só em 127.0.0.1.
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: aggregator
+      POSTGRES_USER: aggregator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aggregator}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./observability/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aggregator -d aggregator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ------------------------------------------------- observabilidade (profile)
   # Fora do `make up` padrão para manter a stack leve; suba com `make obs`.
   jaeger:
@@ -90,3 +110,28 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Leitura anônima do dashboard (demo); edição só com login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/aggregator.json
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

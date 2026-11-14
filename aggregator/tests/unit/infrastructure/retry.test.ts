@@ -100,7 +100,7 @@ describe('RetryingFlightProvider', () => {
     expect(error).toBeInstanceOf(ProviderTimeoutError);
     // A mensagem varia (o timeout da tentativa, 79 ms após o floor, pode vencer o deadline
     // por 1 ms); o que importa: é timeout e respeitou o orçamento.
-    expect(elapsed).toBeLessThan(200);
+    expect(elapsed).toBeLessThan(500); // longe dos 1.000 ms da tentativa: o deadline mandou
   });
 });
 

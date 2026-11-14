@@ -44,6 +44,15 @@ const EnvSchema = z.object({
   REDIS_URL: z.url().optional(),
   REDIS_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(200),
 
+  /** Persistência analítica. Sem DATABASE_URL a busca funciona, só não grava insights. */
+  DATABASE_URL: z.url().optional(),
+  DB_POOL_MAX: z.coerce.number().int().positive().default(5),
+  DB_MIGRATE_ON_BOOT: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  DB_MAX_IN_FLIGHT_WRITES: z.coerce.number().int().positive().default(200),
+
   /** Fuso que define "hoje" na validação de data passada. */
   BUSINESS_TIMEZONE: z.string().default('America/Sao_Paulo'),
   SEARCH_MAX_DAYS_AHEAD: z.coerce.number().int().positive().default(365),
@@ -88,6 +97,12 @@ export interface AppConfig {
     readonly redisCommandTimeoutMs: number;
   };
   readonly search: { readonly timezone: string; readonly maxDaysAhead: number };
+  readonly database: {
+    readonly url: string | undefined;
+    readonly poolMax: number;
+    readonly migrateOnBoot: boolean;
+    readonly maxInFlightWrites: number;
+  };
   readonly selection: {
     readonly strategy: StrategyName;
     readonly tolerancePctBps: number;
@@ -154,6 +169,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       redisCommandTimeoutMs: e.REDIS_COMMAND_TIMEOUT_MS,
     },
     search: { timezone: e.BUSINESS_TIMEZONE, maxDaysAhead: e.SEARCH_MAX_DAYS_AHEAD },
+    database: {
+      url: e.DATABASE_URL,
+      poolMax: e.DB_POOL_MAX,
+      migrateOnBoot: e.DB_MIGRATE_ON_BOOT,
+      maxInFlightWrites: e.DB_MAX_IN_FLIGHT_WRITES,
+    },
     selection: {
       strategy: e.SELECTION_STRATEGY,
       tolerancePctBps: e.SELECTION_TOLERANCE_BPS,

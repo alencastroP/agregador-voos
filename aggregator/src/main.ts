@@ -13,6 +13,7 @@ import {
   waitForRedis,
 } from './infrastructure/cache/redis-search-cache.js';
 import {
+  postgresIndicator,
   providersIndicator,
   redisIndicator,
   withTimeout,
@@ -23,7 +24,9 @@ import {
   OtelTracer,
   startTelemetry,
 } from './infrastructure/observability/telemetry.js';
+import { createDatabase, runMigrations } from './infrastructure/persistence/database.js';
 import { NoopSearchRepository } from './infrastructure/persistence/noop-search-repository.js';
+import { PostgresSearchRepository } from './infrastructure/persistence/postgres-search-repository.js';
 import { createResilientProviders } from './infrastructure/providers/create-providers.js';
 import { buildApp } from './interfaces/http/app.js';
 
@@ -56,6 +59,21 @@ async function main(): Promise<void> {
   const redisReady = redis ? await waitForRedis(redis, 2_000) : false;
   const cache = redis ? new RedisSearchCache(redis) : new InMemorySearchCache(clock);
 
+  // Persistência analítica: opcional e nunca bloqueante. Migration falhou → sobe sem gravar.
+  const database = config.database.url
+    ? createDatabase({ url: config.database.url, poolMax: config.database.poolMax })
+    : undefined;
+  let persistence: PostgresSearchRepository | undefined;
+  let persistenceProblem: string | undefined;
+  if (database) {
+    try {
+      if (config.database.migrateOnBoot) await runMigrations(database.db);
+      persistence = new PostgresSearchRepository(database.db, config.database.maxInFlightWrites);
+    } catch (error) {
+      persistenceProblem = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   // Logger do app ainda não existe aqui: transições de circuito são registradas depois do build.
   let onCircuitTransition: (provider: string, from: string, to: string) => void = () => undefined;
   const { providers, breakers } = createResilientProviders(config.providers.urls, {
@@ -72,7 +90,7 @@ async function main(): Promise<void> {
     providers,
     strategy: () => strategy,
     cache,
-    repository: new NoopSearchRepository(),
+    repository: persistence ?? new NoopSearchRepository(),
     clock,
     observer: metrics.observer(),
     tracer,
@@ -90,7 +108,17 @@ async function main(): Promise<void> {
     config,
     searchFlights,
     health: {
-      indicators: [withTimeout(redisIndicator(redis), 500), providersIndicator(breakers)],
+      indicators: [
+        withTimeout(redisIndicator(redis), 500),
+        withTimeout(
+          postgresIndicator(
+            persistence && database ? () => database.pool.query('select 1') : undefined,
+            () => persistence?.pendingWrites ?? 0,
+          ),
+          500,
+        ),
+        providersIndicator(breakers),
+      ],
       isDraining: () => draining,
       version: config.version,
     },
@@ -109,6 +137,8 @@ async function main(): Promise<void> {
     app.log.info({ signal, graceMs: config.shutdownGraceMs }, 'shutting down');
     await new Promise((resolve) => setTimeout(resolve, config.shutdownGraceMs));
     await app.close();
+    await persistence?.drain(5_000); // não perder as últimas buscas gravadas em background
+    await database?.pool.end().catch(() => undefined);
     await redis?.quit().catch(() => undefined);
     await telemetry?.shutdown().catch(() => undefined);
     process.exit(0);
@@ -123,11 +153,15 @@ async function main(): Promise<void> {
       strategy: strategy.fingerprint,
       cache: redis ? 'redis' : 'in-memory',
       tracing: telemetry ? config.telemetry.otlpEndpoint : 'disabled',
+      persistence: persistence ? 'postgres' : 'disabled',
     },
     'aggregator ready',
   );
   if (!redis) app.log.warn('REDIS_URL not set: using in-memory cache (single instance only)');
   else if (!redisReady) app.log.warn('redis not ready at boot: serving without cache until it is');
+  if (persistenceProblem) {
+    app.log.error({ err: persistenceProblem }, 'database unavailable at boot: insights disabled');
+  }
 }
 
 main().catch((error: unknown) => {

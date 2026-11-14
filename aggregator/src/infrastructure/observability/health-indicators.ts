@@ -61,3 +61,31 @@ export function providersIndicator(
     },
   };
 }
+
+/** Postgres: informativo (persistência é fire-and-forget; o banco fora não impede a busca). */
+export function postgresIndicator(
+  ping: (() => Promise<unknown>) | undefined,
+  pendingWrites: () => number,
+): HealthIndicator {
+  return {
+    name: 'database',
+    critical: false,
+    check: async () => {
+      if (!ping) {
+        return {
+          status: 'degraded',
+          details: { mode: 'disabled', reason: 'DATABASE_URL not set' },
+        };
+      }
+      const started = performance.now();
+      await ping();
+      return {
+        status: 'up',
+        details: {
+          latencyMs: Math.round(performance.now() - started),
+          pendingWrites: pendingWrites(),
+        },
+      };
+    },
+  };
+}
