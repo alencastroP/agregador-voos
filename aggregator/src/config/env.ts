@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { STRATEGY_NAMES, type StrategyName } from '../domain/selection/strategy.js';
 
 /**
  * Configuração validada no boot. Se faltar algo obrigatório o processo NÃO sobe:
@@ -16,6 +17,19 @@ const EnvSchema = z.object({
   PROVIDER_C_URL: z.url(),
   /** Orçamento total por provider (todas as tentativas somadas). Requisito: 3s. */
   PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+
+  CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(300),
+  PARTIAL_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(30),
+
+  /** Fuso que define "hoje" na validação de data passada. */
+  BUSINESS_TIMEZONE: z.string().default('America/Sao_Paulo'),
+  SEARCH_MAX_DAYS_AHEAD: z.coerce.number().int().positive().default(365),
+
+  // Defaults da estratégia (feature flags podem sobrescrever em runtime).
+  SELECTION_STRATEGY: z.enum(STRATEGY_NAMES).default('balanced'),
+  SELECTION_TOLERANCE_BPS: z.coerce.number().int().nonnegative().default(150),
+  SELECTION_MAX_DELTA_CENTS: z.coerce.number().int().nonnegative().default(2500),
+  SELECTION_MIN_GAIN_RATIO: z.coerce.number().nonnegative().default(0),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -28,12 +42,29 @@ export interface AppConfig {
     readonly timeoutMs: number;
     readonly urls: { readonly a: string; readonly b: string; readonly c: string };
   };
+  readonly cache: { readonly ttlSeconds: number; readonly partialTtlSeconds: number };
+  readonly search: { readonly timezone: string; readonly maxDaysAhead: number };
+  readonly selection: {
+    readonly strategy: StrategyName;
+    readonly tolerancePctBps: number;
+    readonly maxDeltaCents: number;
+    readonly minGainRatio: number;
+  };
 }
 
 export class ConfigError extends Error {
   constructor(readonly problems: readonly string[]) {
     super(`Configuração inválida:\n  - ${problems.join('\n  - ')}`);
     this.name = 'ConfigError';
+  }
+}
+
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -45,6 +76,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
   const e = parsed.data;
+  if (!isValidTimezone(e.BUSINESS_TIMEZONE)) {
+    throw new ConfigError([`BUSINESS_TIMEZONE: fuso IANA inválido "${e.BUSINESS_TIMEZONE}"`]);
+  }
   return Object.freeze({
     env: e.NODE_ENV,
     http: { host: e.HOST, port: e.PORT },
@@ -52,6 +86,14 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     providers: {
       timeoutMs: e.PROVIDER_TIMEOUT_MS,
       urls: { a: e.PROVIDER_A_URL, b: e.PROVIDER_B_URL, c: e.PROVIDER_C_URL },
+    },
+    cache: { ttlSeconds: e.CACHE_TTL_SECONDS, partialTtlSeconds: e.PARTIAL_CACHE_TTL_SECONDS },
+    search: { timezone: e.BUSINESS_TIMEZONE, maxDaysAhead: e.SEARCH_MAX_DAYS_AHEAD },
+    selection: {
+      strategy: e.SELECTION_STRATEGY,
+      tolerancePctBps: e.SELECTION_TOLERANCE_BPS,
+      maxDeltaCents: e.SELECTION_MAX_DELTA_CENTS,
+      minGainRatio: e.SELECTION_MIN_GAIN_RATIO,
     },
   });
 }

@@ -1,0 +1,38 @@
+# Coleção de requisições (VS Code REST Client / JetBrains HTTP Client).
+# Suba a stack com `make up` (ou `npm run dev` em aggregator/ com os mocks rodando).
+@base = http://localhost:8000
+@date = 2026-12-14
+
+### 1. Busca de sucesso
+POST {{base}}/search
+Content-Type: application/json
+X-Request-Id: demo-001
+
+{ "origin": "GRU", "destination": "GIG", "date": "{{date}}" }
+
+### 2. Mesma busca (cache hit → meta.cached = true; IATA é normalizado)
+POST {{base}}/search
+Content-Type: application/json
+
+{ "origin": "gru", "destination": "gig", "date": "{{date}}" }
+
+### 3. Falha parcial: rode `make chaos` antes e repita algumas vezes (meta.partial = true)
+POST {{base}}/search
+Content-Type: application/json
+
+{ "origin": "CGH", "destination": "SDU", "date": "{{date}}" }
+
+### 4. Validação: todos os erros de uma vez (400 Problem Details)
+POST {{base}}/search
+Content-Type: application/json
+
+{ "origin": "XX", "destination": "GIG", "date": "2020-01-01" }
+
+### 5. Origem = destino (400)
+POST {{base}}/search
+Content-Type: application/json
+
+{ "origin": "GRU", "destination": "GRU", "date": "{{date}}" }
+
+### 6. Liveness
+GET {{base}}/health/live

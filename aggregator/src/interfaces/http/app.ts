@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import type { AppConfig } from '../../config/env.js';
 import { sendProblem, toProblem } from './problem-details.js';
+import { registerSearchRoutes, type SearchUseCase } from './routes/search.route.js';
 
 export interface AppDeps {
   readonly config: AppConfig;
+  readonly searchFlights: SearchUseCase;
 }
 
 const REQUEST_ID_HEADER = 'x-request-id';
@@ -14,7 +16,7 @@ const REQUEST_ID_PATTERN = /^[\w.:-]{1,128}$/;
  * Monta o servidor HTTP sem dar `listen`: testes usam `app.inject()` sem abrir porta.
  * As dependências chegam prontas do composition root (main.ts); aqui só tem HTTP.
  */
-export function buildApp({ config }: AppDeps): FastifyInstance {
+export function buildApp({ config, searchFlights }: AppDeps): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -36,7 +38,9 @@ export function buildApp({ config }: AppDeps): FastifyInstance {
 
   app.setErrorHandler((error, request, reply) => {
     const problem = toProblem(error, request);
-    if (problem.status >= 500) request.log.error({ err: error }, 'request failed');
+    // 500 é bug (error); 503 é degradação esperada e já logada por provider (warn).
+    if (problem.status === 500) request.log.error({ err: error }, 'request failed');
+    else if (problem.status === 503) request.log.warn({ err: error }, 'service degraded');
     return sendProblem(reply, problem);
   });
 
@@ -53,6 +57,8 @@ export function buildApp({ config }: AppDeps): FastifyInstance {
 
   // Liveness: o processo responde. Readiness (Redis/Postgres) entra na fase de observabilidade.
   app.get('/health/live', () => ({ status: 'ok' }));
+
+  registerSearchRoutes(app, searchFlights);
 
   return app;
 }

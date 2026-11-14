@@ -26,6 +26,8 @@ export interface SelectedOffer {
 /** Decide QUAL oferta exibir quando vários providers vendem o mesmo voo. */
 export interface OfferSelectionStrategy {
   readonly name: StrategyName;
+  /** Nome + parâmetros. Entra na chave de cache: trocar a estratégia por flag não serve resposta velha. */
+  readonly fingerprint: string;
   select(offers: readonly FlightOffer[]): SelectedOffer;
 }
 

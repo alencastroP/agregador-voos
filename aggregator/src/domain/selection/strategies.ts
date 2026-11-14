@@ -20,6 +20,7 @@ import {
  */
 export class CheapestStrategy implements OfferSelectionStrategy {
   readonly name = 'cheapest';
+  readonly fingerprint = 'cheapest';
 
   select(offers: readonly FlightOffer[]): SelectedOffer {
     assertComparable(offers);
@@ -33,6 +34,7 @@ export class CheapestStrategy implements OfferSelectionStrategy {
  */
 export class MaxIncentiveStrategy implements OfferSelectionStrategy {
   readonly name = 'max_incentive';
+  readonly fingerprint = 'max_incentive';
   private readonly order = chain(byIncentiveDesc, byPriceAsc, byDurationAsc, byProviderRank);
 
   select(offers: readonly FlightOffer[]): SelectedOffer {
@@ -73,6 +75,7 @@ export const DEFAULT_BALANCED_PARAMS: BalancedParams = {
  */
 export class BalancedStrategy implements OfferSelectionStrategy {
   readonly name = 'balanced';
+  readonly fingerprint: string;
   private readonly order = chain(byIncentiveDesc, byPriceAsc, byDurationAsc, byProviderRank);
 
   constructor(readonly params: BalancedParams = DEFAULT_BALANCED_PARAMS) {
@@ -86,6 +89,7 @@ export class BalancedStrategy implements OfferSelectionStrategy {
     if (!Number.isFinite(minGainRatio) || minGainRatio < 0) {
       throw new SelectionInvariantError(`minGainRatio inválido: ${minGainRatio}`);
     }
+    this.fingerprint = `balanced:${tolerancePctBps}:${maxDeltaCents}:${minGainRatio}`;
   }
 
   select(offers: readonly FlightOffer[]): SelectedOffer {
