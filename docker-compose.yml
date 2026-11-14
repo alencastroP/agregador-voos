@@ -1,0 +1,44 @@
+name: agregador-voos
+
+# `build.network: host` nos dois builds: em host com systemd-resolved (ou com
+# resolver de VPN), o container de build não resolve DNS pela bridge e o
+# download de dependências falha. Usando a rede do host o build baixa normal.
+# Em máquina com DNS de bridge funcionando a linha é inócua — pode remover.
+
+services:
+  # ---------------------------------------------------------------- providers
+  # Sistemas de terceiros simulados. Mesma imagem, contratos diferentes.
+  provider-a:
+    build:
+      context: ./mocks
+      network: host
+    image: agregador-voos-mocks
+    environment:
+      PROVIDER: a
+    ports:
+      - "3001:3000"
+
+  provider-b:
+    build:
+      context: ./mocks
+      network: host
+    image: agregador-voos-mocks
+    environment:
+      PROVIDER: b
+    ports:
+      - "3002:3000"
+
+  provider-c:
+    build:
+      context: ./mocks
+      network: host
+    image: agregador-voos-mocks
+    environment:
+      PROVIDER: c
+      # Chaos engineering: descomente para ver a degradação parcial em ação.
+       FAIL_RATE: "0.3"      # 30% das chamadas devolvem 500
+       TIMEOUT_RATE: "0.3"   # 30% estouram o timeout de 3s
+    ports:
+      - "3003:3000"
+
+ 
