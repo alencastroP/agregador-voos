@@ -15,17 +15,18 @@ logs:
 ps:
 	docker compose ps
 
-test:
-	cd aggregator && uv run pytest
+# Agregador em Node/TypeScript (docs/adr/0001): mesmos alvos, implementação npm.
+test:          ## testes unitários + integração
+	cd aggregator && npm test
 
-cov:
-	cd aggregator && uv run pytest --cov=app --cov-report=term-missing
+cov:           ## testes com relatório de cobertura (meta 85% em domain/application)
+	cd aggregator && npm run coverage
 
-lint:
-	cd aggregator && uv run ruff check . && uv run ruff format --check .
+lint:          ## eslint + prettier --check + tsc --noEmit
+	cd aggregator && npm run lint && npm run typecheck
 
 fmt:
-	cd aggregator && uv run ruff format . && uv run ruff check . --fix
+	cd aggregator && npm run format
 
 PYTHON ?= python3
 ORIGIN ?= GRU

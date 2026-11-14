@@ -6,3 +6,11 @@ __pycache__/
 .coverage
 htmlcov/
 .env
+
+# Node (agregador em TypeScript, ver docs/adr/0001)
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env.*
+!.env.example
