@@ -13,7 +13,7 @@ import {
   waitForRedis,
 } from './infrastructure/cache/redis-search-cache.js';
 import { NoopSearchRepository } from './infrastructure/persistence/noop-search-repository.js';
-import { createHttpProviders } from './infrastructure/providers/create-providers.js';
+import { createResilientProviders } from './infrastructure/providers/create-providers.js';
 import { buildApp } from './interfaces/http/app.js';
 
 async function main(): Promise<void> {
@@ -36,8 +36,19 @@ async function main(): Promise<void> {
   const redisReady = redis ? await waitForRedis(redis, 2_000) : false;
   const cache = redis ? new RedisSearchCache(redis) : new InMemorySearchCache(clock);
 
+  // Logger do app ainda não existe aqui: transições de circuito são registradas depois do build.
+  let onCircuitTransition: (provider: string, from: string, to: string) => void = () => undefined;
+  const { providers } = createResilientProviders(config.providers.urls, {
+    retry: { ...config.providers.retry, budgetMs: config.providers.timeoutMs },
+    circuitBreaker: config.providers.circuitBreaker,
+    clock,
+    onCircuitTransition: (provider, from, to) => {
+      onCircuitTransition(provider, from, to);
+    },
+  });
+
   const searchFlights = new SearchFlights({
-    providers: createHttpProviders(config.providers.urls),
+    providers,
     strategy: () => strategy,
     cache,
     repository: new NoopSearchRepository(),
@@ -52,6 +63,9 @@ async function main(): Promise<void> {
   });
 
   const app = buildApp({ config, searchFlights });
+  onCircuitTransition = (provider, from, to) => {
+    app.log.warn({ provider, from, to }, 'circuit breaker transition');
+  };
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');

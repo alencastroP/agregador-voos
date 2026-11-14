@@ -3,6 +3,7 @@ import {
   AllProvidersFailedError,
   CircuitOpenError,
   DomainError,
+  ProviderError,
   ProviderTimeoutError,
 } from '../domain/errors.js';
 import type { FlightOffer } from '../domain/flight-offer.js';
@@ -168,7 +169,7 @@ export class SearchFlights {
   ): Promise<ProviderOutcome> {
     const base = { name: provider.id, offersCount: 0, discardedCount: 0 };
     if (!this.isEnabled(provider.id)) {
-      return { report: { ...base, status: 'disabled', latencyMs: 0 }, offers: [] };
+      return { report: { ...base, status: 'disabled', latencyMs: 0, attempts: 0 }, offers: [] };
     }
 
     const budgetMs = this.deps.config.providerTimeoutMs;
@@ -205,6 +206,7 @@ export class SearchFlights {
           latencyMs,
           offersCount: result.offers.length,
           discardedCount: result.discarded.length,
+          attempts: result.attempts ?? 1,
         },
         offers: result.offers,
       };
@@ -212,11 +214,14 @@ export class SearchFlights {
       const latencyMs = Math.round(performance.now() - started);
       const status = classify(error);
       const errorCode = error instanceof DomainError ? error.code : 'unexpected_error';
+      // circuit_open não chama o provider; demais erros carregam as tentativas feitas.
+      const attempts =
+        status === 'circuit_open' ? 0 : error instanceof ProviderError ? error.attempts : 1;
       logger.warn(
-        { ...log, provider: provider.id, status, errorCode, latencyMs, err: error },
+        { ...log, provider: provider.id, status, errorCode, latencyMs, attempts, err: error },
         'provider call failed',
       );
-      return { report: { ...base, status, latencyMs, errorCode }, offers: [] };
+      return { report: { ...base, status, latencyMs, errorCode, attempts }, offers: [] };
     }
   }
 
@@ -235,6 +240,7 @@ export class SearchFlights {
         latencyMs: 0,
         offersCount: 0,
         discardedCount: 0,
+        attempts: 1,
         errorCode: 'unexpected_error',
       },
       offers: [],

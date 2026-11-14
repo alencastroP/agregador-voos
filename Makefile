@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps test cov lint fmt search health chaos calm
+.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load
 
 up:            ## sobe tudo (providers + redis + agregador)
 	docker compose up -d --build
@@ -48,3 +48,9 @@ chaos:         ## provider-c derrubando ~21% e pendurando ~30% das chamadas
 
 calm:          ## desliga o chaos (recria o provider-c com a config original)
 	docker compose up -d --no-deps provider-c
+
+simulate:      ## compara as estratégias de seleção sobre buscas reais dos mocks
+	cd aggregator && npm run simulate
+
+load:          ## 200 buscas únicas contra o agregador (use com `make chaos`)
+	cd aggregator && npm run load -- --n 200 --concurrency 10

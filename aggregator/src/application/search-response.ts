@@ -13,6 +13,8 @@ export interface ProviderReport {
   readonly latencyMs: number;
   readonly offersCount: number;
   readonly discardedCount: number;
+  /** Tentativas feitas (retry). 0 quando o provider nem foi chamado (disabled/circuit_open). */
+  readonly attempts: number;
   /** Código estável do erro (provider_timeout, provider_unavailable...). Nunca mensagem interna. */
   readonly errorCode?: string;
 }

@@ -18,6 +18,19 @@ const EnvSchema = z.object({
   /** Orçamento total por provider (todas as tentativas somadas). Requisito: 3s. */
   PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
 
+  // Retry (dentro do orçamento acima). Latência normal dos mocks ≤ ~480 ms; pendurado = 30 s.
+  PROVIDER_ATTEMPT_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
+  PROVIDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  RETRY_BASE_DELAY_MS: z.coerce.number().int().nonnegative().default(50),
+  RETRY_MAX_DELAY_MS: z.coerce.number().int().nonnegative().default(250),
+  RETRY_MIN_ATTEMPT_MS: z.coerce.number().int().nonnegative().default(500),
+
+  // Circuit breaker por provider, contando CHAMADAS LÓGICAS (já com retry).
+  CB_WINDOW_SIZE: z.coerce.number().int().positive().default(20),
+  CB_MINIMUM_CALLS: z.coerce.number().int().positive().default(10),
+  CB_FAILURE_RATE: z.coerce.number().gt(0).max(1).default(0.5),
+  CB_OPEN_DURATION_MS: z.coerce.number().int().positive().default(10_000),
+
   CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(300),
   PARTIAL_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(30),
   /** Sem REDIS_URL o serviço sobe com cache em memória (dev) e avisa no log. */
@@ -44,6 +57,19 @@ export interface AppConfig {
   readonly providers: {
     readonly timeoutMs: number;
     readonly urls: { readonly a: string; readonly b: string; readonly c: string };
+    readonly retry: {
+      readonly maxAttempts: number;
+      readonly attemptTimeoutMs: number;
+      readonly baseDelayMs: number;
+      readonly maxDelayMs: number;
+      readonly minAttemptMs: number;
+    };
+    readonly circuitBreaker: {
+      readonly windowSize: number;
+      readonly minimumCalls: number;
+      readonly failureRateThreshold: number;
+      readonly openDurationMs: number;
+    };
   };
   readonly cache: {
     readonly ttlSeconds: number;
@@ -94,6 +120,19 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     providers: {
       timeoutMs: e.PROVIDER_TIMEOUT_MS,
       urls: { a: e.PROVIDER_A_URL, b: e.PROVIDER_B_URL, c: e.PROVIDER_C_URL },
+      retry: {
+        maxAttempts: e.PROVIDER_MAX_ATTEMPTS,
+        attemptTimeoutMs: e.PROVIDER_ATTEMPT_TIMEOUT_MS,
+        baseDelayMs: e.RETRY_BASE_DELAY_MS,
+        maxDelayMs: e.RETRY_MAX_DELAY_MS,
+        minAttemptMs: e.RETRY_MIN_ATTEMPT_MS,
+      },
+      circuitBreaker: {
+        windowSize: e.CB_WINDOW_SIZE,
+        minimumCalls: e.CB_MINIMUM_CALLS,
+        failureRateThreshold: e.CB_FAILURE_RATE,
+        openDurationMs: e.CB_OPEN_DURATION_MS,
+      },
     },
     cache: {
       ttlSeconds: e.CACHE_TTL_SECONDS,

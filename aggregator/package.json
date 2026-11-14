@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm test",
     "prepare": "cd .. && husky aggregator/.husky || true",
-    "simulate": "tsx scripts/simulate.ts"
+    "simulate": "tsx scripts/simulate.ts",
+    "load": "tsx scripts/load.ts"
   },
   "dependencies": {
     "fastify": "^5.2.0",

@@ -15,6 +15,8 @@ export interface ProviderSearchResult {
   readonly discarded: readonly DiscardedOffer[];
   /** Nomes de companhia sem mapeamento conhecido (mantidos como chave própria). */
   readonly unknownAirlines: readonly string[];
+  /** Tentativas até o sucesso (1 sem retry). Preenchido pela política de retry. */
+  readonly attempts?: number;
 }
 
 /**

@@ -31,6 +31,9 @@ export class InvalidMoneyError extends DomainError {
 
 /** Base dos erros de provider: sempre sabemos QUAL provider falhou. */
 export abstract class ProviderError extends DomainError {
+  /** Quantas tentativas foram feitas até desistir (preenchido pela política de retry). */
+  attempts = 1;
+
   constructor(
     readonly provider: string,
     message: string,
