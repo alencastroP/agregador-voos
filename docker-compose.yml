@@ -36,8 +36,9 @@ services:
     environment:
       PROVIDER: c
       # Chaos engineering: descomente para ver a degradação parcial em ação.
-       FAIL_RATE: "0.3"      # 30% das chamadas devolvem 500
-       TIMEOUT_RATE: "0.3"   # 30% estouram o timeout de 3s
+      # (ou use `make chaos` / `make calm`, que aplicam docker-compose.chaos.yml)
+      # FAIL_RATE: "0.3"      # 30% das chamadas devolvem 500
+      # TIMEOUT_RATE: "0.3"   # 30% estouram o timeout de 3s
     ports:
       - "3003:3000"
 

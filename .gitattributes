@@ -1,0 +1,9 @@
+# LF em todo texto: Makefile e scripts shell com CRLF quebram dentro dos
+# containers Linux (e o checkout no Windows converteria por padrão).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary

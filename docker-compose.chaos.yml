@@ -1,0 +1,14 @@
+# Override de chaos engineering para o provider-c (usado por `make chaos`).
+#
+# Recria o PRÓPRIO serviço provider-c com as envs de falha, em vez de subir uma
+# segunda instância com `docker compose run --service-ports`, que disputaria a
+# porta 3003 com o container original e ficaria fora do DNS `provider-c` que o
+# agregador usa dentro da rede. `make calm` volta ao normal.
+#
+# Atenção: o mock sorteia o "pendurar" ANTES do 500. As taxas efetivas por
+# chamada são ~30% pendurado (30 s), ~21% de 500 imediato e ~49% de sucesso.
+services:
+  provider-c:
+    environment:
+      FAIL_RATE: "0.3"
+      TIMEOUT_RATE: "0.3"
