@@ -2,10 +2,18 @@
  * Composition root: o ÚNICO lugar que conhece as implementações concretas.
  * Injeção de dependência manual, sem container/decorators: dá para ler o grafo de cima a baixo.
  */
+import { OpenFeature } from '@openfeature/server-sdk';
 import { systemClock } from './application/ports/clock.js';
+import {
+  staticFlags,
+  type FeatureFlags,
+  type SearchFlags,
+} from './application/ports/feature-flags.js';
 import { SearchFlights } from './application/search-flights.js';
 import { ConfigError, loadConfig } from './config/env.js';
 import { createStrategy } from './domain/selection/select-offers.js';
+import { FileFlagProvider } from './infrastructure/flags/file-flag-provider.js';
+import { OpenFeatureFlags } from './infrastructure/flags/openfeature-flags.js';
 import { InMemorySearchCache } from './infrastructure/cache/in-memory-search-cache.js';
 import {
   createRedisClient,
@@ -43,8 +51,40 @@ async function main(): Promise<void> {
   const tracer = new OtelTracer();
   const metrics = new Metrics();
 
+  // Logger do app só existe depois do build: eventos de boot são enfileirados até lá.
+  const bootEvents: { level: 'info' | 'warn'; obj: object; msg: string }[] = [];
+  let logEvent = (level: 'info' | 'warn', obj: object, msg: string) => {
+    bootEvents.push({ level, obj, msg });
+  };
+
+  // Feature flags: defaults vêm do .env; o arquivo (se houver) sobrescreve em runtime.
   const { strategy: name, ...balanced } = config.selection;
-  const strategy = createStrategy(name, balanced);
+  const defaultFlags: SearchFlags = {
+    strategy: name,
+    balanced,
+    providers: { 'provider-a': true, 'provider-b': true, 'provider-c': true },
+    cacheEnabled: true,
+  };
+  const defaultStrategy = createStrategy(name, balanced); // valida os defaults no boot
+  let flags: FeatureFlags = staticFlags(defaultFlags);
+  if (config.flags.file) {
+    await OpenFeature.setProviderAndWait(
+      new FileFlagProvider({
+        path: config.flags.file,
+        pollIntervalMs: config.flags.pollMs,
+        onReload: (r) => {
+          logEvent(
+            r.ok ? 'info' : 'warn',
+            r,
+            r.ok ? 'feature flags loaded' : 'feature flags file invalid, keeping last good',
+          );
+        },
+      }),
+    );
+    flags = new OpenFeatureFlags(OpenFeature.getClient(), defaultFlags, (key, value) => {
+      logEvent('warn', { key, value }, 'invalid feature flag value, using default');
+    });
+  }
 
   const redis = config.cache.redisUrl
     ? createRedisClient({
@@ -88,7 +128,7 @@ async function main(): Promise<void> {
 
   const searchFlights = new SearchFlights({
     providers,
-    strategy: () => strategy,
+    flags,
     cache,
     repository: persistence ?? new NoopSearchRepository(),
     clock,
@@ -127,6 +167,10 @@ async function main(): Promise<void> {
   onCircuitTransition = (provider, from, to) => {
     app.log.warn({ provider, from, to }, 'circuit breaker transition');
   };
+  logEvent = (level, obj, msg) => {
+    app.log[level](obj, msg);
+  };
+  for (const e of bootEvents.splice(0)) logEvent(e.level, e.obj, e.msg);
 
   /**
    * Graceful shutdown em etapas: (1) readiness → 503 e espera o LB tirar a instância,
@@ -140,6 +184,7 @@ async function main(): Promise<void> {
     await persistence?.drain(5_000); // não perder as últimas buscas gravadas em background
     await database?.pool.end().catch(() => undefined);
     await redis?.quit().catch(() => undefined);
+    await OpenFeature.close().catch(() => undefined);
     await telemetry?.shutdown().catch(() => undefined);
     process.exit(0);
   };
@@ -150,7 +195,8 @@ async function main(): Promise<void> {
   app.log.info(
     {
       version: config.version,
-      strategy: strategy.fingerprint,
+      strategy: defaultStrategy.fingerprint,
+      flags: config.flags.file ?? 'static (env)',
       cache: redis ? 'redis' : 'in-memory',
       tracing: telemetry ? config.telemetry.otlpEndpoint : 'disabled',
       persistence: persistence ? 'postgres' : 'disabled',

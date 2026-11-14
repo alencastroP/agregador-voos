@@ -63,6 +63,11 @@ services:
       # Vazio = tracing desligado; `make obs` aponta para o Jaeger.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       SHUTDOWN_GRACE_MS: "2000"
+      # Feature flags (OpenFeature, arquivo com recarga a quente): edite flags/flags.json e a
+      # mudança vale em ~2 s, sem restart nem deploy (ex.: kill switch de provider).
+      FLAGS_FILE: /app/flags/flags.json
+    volumes:
+      - ./flags:/app/flags:ro
     ports:
       - "8000:8000"
     depends_on:

@@ -60,6 +60,10 @@ const EnvSchema = z.object({
   BUSINESS_TIMEZONE: z.string().default('America/Sao_Paulo'),
   SEARCH_MAX_DAYS_AHEAD: z.coerce.number().int().positive().default(365),
 
+  /** Arquivo de feature flags (OpenFeature). Sem ele, valem os defaults abaixo (estáticos). */
+  FLAGS_FILE: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  FLAGS_POLL_MS: z.coerce.number().int().positive().default(2000),
+
   // Defaults da estratégia (feature flags podem sobrescrever em runtime).
   SELECTION_STRATEGY: z.enum(STRATEGY_NAMES).default('balanced'),
   SELECTION_TOLERANCE_BPS: z.coerce.number().int().nonnegative().default(150),
@@ -106,6 +110,7 @@ export interface AppConfig {
     readonly migrateOnBoot: boolean;
     readonly maxInFlightWrites: number;
   };
+  readonly flags: { readonly file: string | undefined; readonly pollMs: number };
   readonly selection: {
     readonly strategy: StrategyName;
     readonly tolerancePctBps: number;
@@ -178,6 +183,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       migrateOnBoot: e.DB_MIGRATE_ON_BOOT,
       maxInFlightWrites: e.DB_MAX_IN_FLIGHT_WRITES,
     },
+    flags: { file: e.FLAGS_FILE, pollMs: e.FLAGS_POLL_MS },
     selection: {
       strategy: e.SELECTION_STRATEGY,
       tolerancePctBps: e.SELECTION_TOLERANCE_BPS,

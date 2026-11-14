@@ -14,7 +14,8 @@ import { DEFAULT_INCENTIVE_BPS } from '../../../src/domain/provider.js';
 import { mapProviderA } from '../../../src/infrastructure/providers/mappers/provider-a.mapper.js';
 import { mapProviderB } from '../../../src/infrastructure/providers/mappers/provider-b.mapper.js';
 import { mapProviderC } from '../../../src/infrastructure/providers/mappers/provider-c.mapper.js';
-import { FakeClock, FakeProvider, useCase } from '../../helpers/app.js';
+import { staticFlags } from '../../../src/application/ports/feature-flags.js';
+import { defaultFlags, FakeClock, FakeProvider, useCase } from '../../helpers/app.js';
 import { loadProviderFixture, query } from '../../helpers/fixtures.js';
 
 const input = { origin: 'GRU', destination: 'GIG', date: '2026-12-12' };
@@ -147,7 +148,11 @@ describe('SearchFlights: degradation', () => {
     const providers = healthy();
     const res = await useCase({
       providers,
-      isProviderEnabled: (id) => id !== 'provider-b',
+      flags: staticFlags(
+        defaultFlags({
+          providers: { 'provider-a': true, 'provider-b': false, 'provider-c': true },
+        }),
+      ),
     }).execute(input, ctx);
     expect(providers[1]!.calls).toBe(0);
     expect(res.meta.providers[1]).toMatchObject({ status: 'disabled', latencyMs: 0 });
@@ -251,8 +256,8 @@ describe('SearchFlights: cache', () => {
   });
 
   it('uses a cache key that includes the strategy fingerprint', () => {
-    expect(searchCacheKey(query(), 'balanced:150:2500:0')).toBe(
-      'search:v1:GRU:GIG:2026-12-12:balanced:150:2500:0',
+    expect(searchCacheKey(query(), 'balanced:150:2500:0', 'abc')).toBe(
+      'search:v1:GRU:GIG:2026-12-12:balanced:150:2500:0:abc',
     );
   });
 

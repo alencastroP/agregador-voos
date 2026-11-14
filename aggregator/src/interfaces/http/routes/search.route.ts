@@ -3,6 +3,9 @@ import { noopTracer, type Tracer } from '../../../application/ports/tracer.js';
 import type { SearchContext } from '../../../application/search-flights.js';
 import type { SearchResponse } from '../../../application/search-response.js';
 
+/** Identificador da agência (opcional): habilita feature flag por agência (A/B, rollout). */
+const AGENCY_PATTERN = /^[\w.-]{1,64}$/;
+
 /** O que a rota precisa do use case (facilita stub em teste de HTTP). */
 export interface SearchUseCase {
   execute(input: unknown, context: SearchContext): Promise<SearchResponse>;
@@ -25,7 +28,15 @@ export function registerSearchRoutes(
     tracer.withSpan(
       'POST /search',
       { 'http.request.method': 'POST', 'http.route': '/search', 'request.id': request.id },
-      () => useCase.execute(request.body, { logger: request.log }),
+      () => {
+        const agency = request.headers['x-agency-id'];
+        const agencyId =
+          typeof agency === 'string' && AGENCY_PATTERN.test(agency) ? agency : undefined;
+        return useCase.execute(request.body, {
+          logger: agencyId ? request.log.child({ agencyId }) : request.log,
+          ...(agencyId ? { agencyId } : {}),
+        });
+      },
     ),
   );
 }

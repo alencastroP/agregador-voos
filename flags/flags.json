@@ -1,0 +1,22 @@
+{
+  "selection.strategy": {
+    "value": "balanced",
+    "description": "cheapest | balanced | max_incentive (ADR 0004)"
+  },
+  "selection.tolerancePctBps": {
+    "value": 150,
+    "description": "Banda τ em basis points (150 = 1,5%). Ex. de A/B: \"agencies\": { \"agencia-teste\": 120 }"
+  },
+  "selection.maxDeltaCents": {
+    "value": 2500,
+    "description": "Teto absoluto do Δ para o cliente, em centavos"
+  },
+  "selection.minGainRatio": {
+    "value": 0,
+    "description": "k: só troca se ganho ≥ k × custo do cliente (0 = desligado)"
+  },
+  "provider.a.enabled": { "value": true, "description": "Kill switch do provider-a" },
+  "provider.b.enabled": { "value": true, "description": "Kill switch do provider-b" },
+  "provider.c.enabled": { "value": true, "description": "Kill switch do provider-c" },
+  "cache.enabled": { "value": true, "description": "Liga/desliga o cache Redis" }
+}

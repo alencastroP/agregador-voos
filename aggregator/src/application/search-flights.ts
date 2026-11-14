@@ -10,10 +10,12 @@ import type { FlightOffer } from '../domain/flight-offer.js';
 import type { ProviderId } from '../domain/provider.js';
 import type { SearchQuery } from '../domain/search-query.js';
 import { selectOffers } from '../domain/selection/select-offers.js';
+import { createStrategy } from '../domain/selection/select-offers.js';
 import type { OfferSelectionStrategy } from '../domain/selection/strategy.js';
 import { sortResults } from '../domain/sorting.js';
 import { withDeadline } from './deadline.js';
 import type { Clock } from './ports/clock.js';
+import type { FeatureFlags, SearchFlags } from './ports/feature-flags.js';
 import type { FlightProvider } from './ports/flight-provider.js';
 import type { Logger } from './ports/logger.js';
 import type { SearchCache } from './ports/search-cache.js';
@@ -41,10 +43,8 @@ export interface SearchFlightsConfig extends SearchValidationRules {
 
 export interface SearchFlightsDeps {
   readonly providers: readonly FlightProvider[];
-  /** Resolvida a cada busca: a estratégia pode mudar por feature flag sem restart. */
-  readonly strategy: () => OfferSelectionStrategy;
-  /** Kill switch por provider (feature flag). Default: todos ligados. */
-  readonly isProviderEnabled?: (id: ProviderId) => boolean;
+  /** Estratégia, kill switches e cache: resolvidos a cada busca (mudam sem restart/deploy). */
+  readonly flags: FeatureFlags;
   readonly cache: SearchCache;
   readonly repository: SearchRepository;
   readonly clock: Clock;
@@ -58,6 +58,8 @@ export interface SearchFlightsDeps {
 
 export interface SearchContext {
   readonly logger: Logger;
+  /** Agência que busca (header x-agency-id): permite flag por agência (A/B, rollout). */
+  readonly agencyId?: string;
 }
 
 interface ProviderOutcome {
@@ -65,8 +67,27 @@ interface ProviderOutcome {
   readonly offers: readonly FlightOffer[];
 }
 
-export function searchCacheKey(query: SearchQuery, strategyFingerprint: string): string {
-  return `search:v1:${query.origin}:${query.destination}:${query.date}:${strategyFingerprint}`;
+/**
+ * A chave inclui TUDO que muda a resposta: rota/data, estratégia (com parâmetros) e quais
+ * providers estão ligados. Sem o último, uma agência com o provider-c desligado por flag
+ * receberia do cache a resposta de outra que o tem ligado (e vice-versa).
+ */
+export function searchCacheKey(
+  query: SearchQuery,
+  strategyFingerprint: string,
+  enabledProviders = 'abc',
+): string {
+  return `search:v1:${query.origin}:${query.destination}:${query.date}:${strategyFingerprint}:${enabledProviders}`;
+}
+
+function enabledFingerprint(flags: SearchFlags): string {
+  return (
+    Object.entries(flags.providers)
+      .filter(([, on]) => on)
+      .map(([id]) => id.slice(-1))
+      .sort()
+      .join('') || 'none'
+  );
 }
 
 /**
@@ -77,14 +98,14 @@ export function searchCacheKey(query: SearchQuery, strategyFingerprint: string):
  */
 export class SearchFlights {
   private readonly newId: () => string;
-  private readonly isEnabled: (id: ProviderId) => boolean;
+  /** Estratégias construídas por combinação de parâmetros (evita recriar a cada busca). */
+  private readonly strategies = new Map<string, OfferSelectionStrategy>();
   private readonly inflight = new SingleFlight<SearchSnapshot>();
   private readonly observer: SearchObserver;
   private readonly tracer: Tracer;
 
   constructor(private readonly deps: SearchFlightsDeps) {
     this.newId = deps.newId ?? randomUUID;
-    this.isEnabled = deps.isProviderEnabled ?? (() => true);
     this.observer = deps.observer ?? noopObserver;
     this.tracer = deps.tracer ?? noopTracer;
   }
@@ -106,13 +127,28 @@ export class SearchFlights {
     });
   }
 
-  private async run(rawInput: unknown, { logger }: SearchContext): Promise<SearchResponse> {
+  private strategyFor(flags: SearchFlags): OfferSelectionStrategy {
+    const { tolerancePctBps, maxDeltaCents, minGainRatio } = flags.balanced;
+    const id = `${flags.strategy}:${tolerancePctBps}:${maxDeltaCents}:${minGainRatio}`;
+    let strategy = this.strategies.get(id);
+    if (!strategy) {
+      strategy = createStrategy(flags.strategy, flags.balanced);
+      this.strategies.set(id, strategy);
+    }
+    return strategy;
+  }
+
+  private async run(rawInput: unknown, context: SearchContext): Promise<SearchResponse> {
+    const { logger } = context;
     const started = performance.now();
     const { clock, config } = this.deps;
     const query = parseSearchInput(rawInput, clock, config);
     const searchId = this.newId();
-    const strategy = this.deps.strategy();
-    const key = searchCacheKey(query, strategy.fingerprint);
+    const flags = await this.deps.flags.evaluate(
+      context.agencyId ? { agencyId: context.agencyId } : {},
+    );
+    const strategy = this.strategyFor(flags);
+    const key = searchCacheKey(query, strategy.fingerprint, enabledFingerprint(flags));
     const log = {
       searchId,
       origin: query.origin,
@@ -120,7 +156,7 @@ export class SearchFlights {
       date: query.date,
     };
 
-    const cached = await this.readCache(key, logger);
+    const cached = flags.cacheEnabled ? await this.readCache(key, logger) : null;
     if (cached) {
       logger.info({ ...log, cacheHit: true }, 'search served from cache');
       this.persist(this.record(searchId, query, cached, true, started), logger);
@@ -130,7 +166,7 @@ export class SearchFlights {
 
     // Single-flight: buscas idênticas simultâneas compartilham UMA ida aos providers.
     const { value: snapshot, leader } = await this.inflight.run(key, () =>
-      this.compute(query, strategy, key, logger, log),
+      this.compute(query, strategy, key, flags, logger, log),
     );
     this.persist(this.record(searchId, query, snapshot, false, started), logger);
     if (!leader) this.observer.searchCoalesced();
@@ -162,6 +198,7 @@ export class SearchFlights {
     query: SearchQuery,
     strategy: OfferSelectionStrategy,
     key: string,
+    flags: SearchFlags,
     logger: Logger,
     log: object,
   ): Promise<SearchSnapshot> {
@@ -169,7 +206,9 @@ export class SearchFlights {
     // jogaria fora o resultado dos outros. callProvider já converte falha em relatório;
     // allSettled é a garantia extra caso algo inesperado escape.
     const settled = await Promise.allSettled(
-      this.deps.providers.map((provider) => this.callProvider(provider, query, logger, log)),
+      this.deps.providers.map((provider) =>
+        this.callProvider(provider, query, flags.providers[provider.id], logger, log),
+      ),
     );
     const outcomes = this.deps.providers.map((provider, i) =>
       this.toOutcome(settled[i], provider.id, logger),
@@ -188,7 +227,7 @@ export class SearchFlights {
       ),
     ).map(({ offer, selection }) => ({ ...offer, selection }));
     const snapshot = this.snapshot(query, results, failed, strategy, reports);
-    await this.writeCache(key, snapshot, logger);
+    if (flags.cacheEnabled) await this.writeCache(key, snapshot, logger);
     return snapshot;
   }
 
@@ -196,6 +235,7 @@ export class SearchFlights {
   private callProvider(
     provider: FlightProvider,
     query: SearchQuery,
+    enabled: boolean,
     logger: Logger,
     log: object,
   ): Promise<ProviderOutcome> {
@@ -203,7 +243,7 @@ export class SearchFlights {
       `provider ${provider.id}`,
       { 'provider.name': provider.id },
       async (span) => {
-        const outcome = await this.callProviderUntraced(provider, query, logger, log);
+        const outcome = await this.callProviderUntraced(provider, query, enabled, logger, log);
         const r = outcome.report;
         span.setAttributes({
           'provider.status': r.status,
@@ -222,11 +262,12 @@ export class SearchFlights {
   private async callProviderUntraced(
     provider: FlightProvider,
     query: SearchQuery,
+    enabled: boolean,
     logger: Logger,
     log: object,
   ): Promise<ProviderOutcome> {
     const base = { name: provider.id, offersCount: 0, discardedCount: 0 };
-    if (!this.isEnabled(provider.id)) {
+    if (!enabled) {
       return { report: { ...base, status: 'disabled', latencyMs: 0, attempts: 0 }, offers: [] };
     }
 

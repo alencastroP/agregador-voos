@@ -5,7 +5,8 @@ import type {
 import type { Clock } from '../../src/application/ports/clock.js';
 import { SearchFlights, type SearchFlightsDeps } from '../../src/application/search-flights.js';
 import { loadConfig, type AppConfig } from '../../src/config/env.js';
-import { BalancedStrategy } from '../../src/domain/selection/strategies.js';
+import { staticFlags, type SearchFlags } from '../../src/application/ports/feature-flags.js';
+import { DEFAULT_BALANCED_PARAMS } from '../../src/domain/selection/strategies.js';
 import type { ProviderId } from '../../src/domain/provider.js';
 import type { SearchQuery } from '../../src/domain/search-query.js';
 import { InMemorySearchCache } from '../../src/infrastructure/cache/in-memory-search-cache.js';
@@ -61,9 +62,8 @@ export class FakeProvider implements FlightProvider {
 
 export function useCase(overrides: Partial<SearchFlightsDeps> & { providers: FlightProvider[] }) {
   const clock = overrides.clock ?? new FakeClock();
-  const strategy = new BalancedStrategy();
   return new SearchFlights({
-    strategy: () => strategy,
+    flags: staticFlags(defaultFlags()),
     cache: new InMemorySearchCache(clock),
     repository: new NoopSearchRepository(),
     clock,
@@ -76,4 +76,15 @@ export function useCase(overrides: Partial<SearchFlightsDeps> & { providers: Fli
     },
     ...overrides,
   });
+}
+
+/** Flags padrão dos testes: balanced (τ 1,5%, teto R$ 25, k 0), tudo ligado. */
+export function defaultFlags(overrides: Partial<SearchFlags> = {}): SearchFlags {
+  return {
+    strategy: 'balanced',
+    balanced: DEFAULT_BALANCED_PARAMS,
+    providers: { 'provider-a': true, 'provider-b': true, 'provider-c': true },
+    cacheEnabled: true,
+    ...overrides,
+  };
 }
