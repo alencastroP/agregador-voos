@@ -85,6 +85,16 @@ jobs:
       - name: Smoke test
         run: bash deploy/smoke-test.sh http://localhost:8000
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aggregator/package-lock.json
+
+      - name: Testes E2E contra a stack (mocks reais)
+        working-directory: aggregator
+        run: npm ci && npm run test:e2e
+
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs --no-color --tail 200

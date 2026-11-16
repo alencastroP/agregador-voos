@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load obs obs-down
+.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load obs obs-down e2e
 
 up:            ## sobe tudo (providers + redis + agregador)
 	docker compose up -d --build
@@ -18,6 +18,9 @@ ps:
 # Agregador em Node/TypeScript (docs/adr/0001): mesmos alvos, implementação npm.
 test:          ## testes unitários + integração
 	cd aggregator && npm test
+
+e2e:           ## testes ponta a ponta contra a stack rodando (rode `make up` antes)
+	cd aggregator && npm run test:e2e
 
 cov:           ## testes com relatório de cobertura (meta 85% em domain/application)
 	cd aggregator && npm run coverage
