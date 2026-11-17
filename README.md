@@ -6,35 +6,186 @@ incentivo da empresa e o preço para o cliente**. Tem resiliência (timeout, ret
 breaker), cache Redis, observabilidade completa e persistência analítica com dashboard.
 
 ```bash
-make up        # providers + redis + postgres + agregador (porta 8000)
-make search    # busca de exemplo (data = hoje + 30 dias)
-make health    # estado de todos os componentes
+git clone https://github.com/alencastroP/agregador-voos.git
+cd agregador-voos
+docker compose up -d --build --wait
 ```
 
-> Só precisa de Docker. Nenhum `.env` é obrigatório para subir a stack.
-> Para observabilidade (Jaeger, Prometheus e Grafana): `make obs`.
-> Configuração completa (serviços, portas, variáveis, flags, CI/CD): **[docs/CONFIGURACAO.md](docs/CONFIGURACAO.md)**.
+Só precisa de Docker. Nenhum `.env`, Node ou Python é obrigatório. O passo a passo completo está
+na [seção 1](#1-como-rodar-localmente).
 
 ---
 
 ## Sumário
 
-1. [Checklist do desafio → evidência](#1-checklist-do-desafio--evidência)
-2. [Arquitetura](#2-arquitetura)
-3. [Decisões e trade-offs](#3-decisões-e-trade-offs)
-4. [Regra de negócio: estratégia de seleção](#4-regra-de-negócio-estratégia-de-seleção)
-5. [Resiliência](#5-resiliência)
-6. [Cache](#6-cache)
-7. [Observabilidade](#7-observabilidade)
-8. [Testes](#8-testes)
-9. [Feature flags](#9-feature-flags)
-10. [Deploy](#10-deploy)
+1. [Como rodar localmente](#1-como-rodar-localmente)
+2. [Checklist do desafio → evidência](#2-checklist-do-desafio--evidência)
+3. [Arquitetura](#3-arquitetura)
+4. [Decisões e trade-offs](#4-decisões-e-trade-offs)
+5. [Regra de negócio: estratégia de seleção](#5-regra-de-negócio-estratégia-de-seleção)
+6. [Resiliência](#6-resiliência)
+7. [Cache](#7-cache)
+8. [Observabilidade](#8-observabilidade)
+9. [Testes](#9-testes)
+10. [Feature flags](#10-feature-flags)
 11. [Limitações e próximos passos em produção](#11-limitações-e-próximos-passos-em-produção)
 12. [Ajustes no ambiente fornecido](#12-ajustes-no-ambiente-fornecido)
 
 ---
 
-## 1. Checklist do desafio → evidência
+## 1. Como rodar localmente
+
+### Pré-requisitos
+
+| O quê | Versão / tamanho | Observação |
+|---|---|---|
+| Docker | Docker Desktop (Windows/macOS) ou Docker Engine (Linux) | com o plugin **Compose v2.20+** (`docker compose version`) |
+| Memória livre | ~3 GB | 9 containers: 3 mocks, agregador, Redis, Postgres, Jaeger, Prometheus, Grafana |
+| Disco | ~2 GB | imagens baixadas no primeiro `up` |
+| Internet | só no primeiro `up` | download das imagens e das dependências do build |
+
+Funciona em Linux, macOS (Intel e Apple Silicon) e Windows (PowerShell, Git Bash ou WSL). Todas as
+imagens são multi-arquitetura.
+
+As portas abaixo precisam estar livres. As marcadas com 🔒 só aceitam conexão da própria máquina
+(`127.0.0.1`).
+
+| Porta | Serviço | Porta | Serviço |
+|---|---|---|---|
+| **8000** | agregador (a API) | 16686 🔒 | Jaeger (UI) |
+| 3000 | Grafana | 4318 🔒 | Jaeger (OTLP) |
+| 3001–3003 | mocks dos providers A, B e C | 9090 🔒 | Prometheus |
+| 6379 🔒 | Redis | 5432 🔒 | Postgres |
+
+### Passo a passo
+
+**1. Clonar e subir a stack**
+
+```bash
+git clone https://github.com/alencastroP/agregador-voos.git
+cd agregador-voos
+docker compose up -d --build --wait
+```
+
+Na primeira vez leva de 2 a 5 minutos (download das imagens e build do agregador e dos mocks). O
+`--wait` só devolve o terminal quando tudo estiver de pé. Para conferir: `docker compose ps` (os 9
+serviços rodando; agregador, Redis e Postgres como `healthy`).
+
+**2. Fazer uma busca**
+
+A data precisa ser **futura** (até 365 dias à frente). Datas passadas são rejeitadas com 400.
+
+Linux, macOS, Git Bash ou WSL:
+
+```bash
+curl -s -X POST http://localhost:8000/search \
+  -H 'Content-Type: application/json' \
+  -d '{"origin":"GRU","destination":"GIG","date":"2027-03-15"}'
+```
+
+Windows PowerShell:
+
+```powershell
+$body = @{ origin = "GRU"; destination = "GIG"; date = (Get-Date).AddDays(30).ToString("yyyy-MM-dd") } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/search -ContentType "application/json" -Body $body | ConvertTo-Json -Depth 6
+```
+
+VS Code (extensão REST Client): abra [`requests.http`](requests.http) e clique em *Send Request*. O
+arquivo tem os cenários de sucesso, cache hit, erro de validação, flags por agência e health.
+
+**O que esperar:** `results` com **60 voos** (120 ofertas dos 3 providers, deduplicadas), ordenados
+por preço; `meta.cached: false` e os 3 providers `ok`. Repetindo a mesma busca, `meta.cached: true`
+e a mesma ordem.
+
+**3. Abrir as ferramentas**
+
+| Endereço | O que é |
+|---|---|
+| http://localhost:8000/health | estado de cada componente (cache, banco, circuitos, versão) |
+| http://localhost:8000/metrics | métricas Prometheus do agregador |
+| http://localhost:3000 | Grafana: dashboard "Agregador de Voos · Insights" (leitura sem login; admin: `admin`/`admin`) |
+| http://localhost:16686 | Jaeger: um trace por busca (serviço `flight-aggregator`) |
+| http://localhost:9090 | Prometheus |
+
+O dashboard começa vazio porque mostra as buscas já feitas. Faça algumas buscas com rotas e datas
+diferentes (ou `make load`, que dispara 200) e os painéis se preenchem em poucos segundos.
+
+**4. Parar**
+
+```bash
+docker compose down      # para tudo e mantém os dados do Postgres (o dashboard)
+docker compose down -v   # para tudo e apaga os dados
+```
+
+### Atalhos com `make` (opcional)
+
+Precisam de `make` e de um shell POSIX (Linux, macOS, Git Bash ou WSL). Tudo o que eles fazem
+também pode ser feito com os comandos `docker compose` acima.
+
+| Comando | O que faz |
+|---|---|
+| `make up` | sobe a stack inteira e espera ficar de pé |
+| `make search` | busca de exemplo GRU→GIG (hoje + 30 dias). Outra rota: `make search ORIGIN=CGH DEST=SDU` |
+| `make health` | estado dos componentes |
+| `make logs` | logs JSON do agregador |
+| `make chaos` / `make calm` | liga e desliga falhas no provider-c (30% pendurado, ~21% de erro 500) |
+| `make stop` / `make down` | para a stack mantendo / apagando os dados |
+| `make test` · `make e2e` · `make lint` · `make cov` | testes e qualidade (precisam de Node 22, ver abaixo) |
+| `make simulate` · `make load` | comparação das estratégias e carga de 200 buscas (precisam de Node 22) |
+
+### Configuração (opcional)
+
+Nada precisa ser configurado. Para mudar algum default, crie um arquivo `.env` na raiz do
+repositório (ele fica fora do git):
+
+| Variável | Default | Para quê |
+|---|---|---|
+| `POSTGRES_PASSWORD` | `aggregator` | senha do Postgres. Se mudar depois do primeiro `up`, rode `docker compose down -v` |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | senha do admin do Grafana |
+| `LOG_LEVEL` | `info` | `debug` mostra cada tentativa de chamada aos providers |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://jaeger:4318` | destino dos traces. Vazio desliga o tracing |
+
+O comportamento de negócio (estratégia, tolerância, kill switch de provider, cache) muda sem
+restart em [`flags/flags.json`](flags/flags.json): a alteração vale em cerca de 2 segundos
+([seção 10](#10-feature-flags)). Os parâmetros internos do agregador (timeouts, retry, circuit
+breaker, TTLs) estão documentados em [`aggregator/.env.example`](aggregator/.env.example).
+
+### Testes e agregador fora do Docker
+
+Precisa de **Node 22** e do Docker rodando (os testes de integração sobem Redis e Postgres reais
+com Testcontainers).
+
+```bash
+cd aggregator
+npm ci
+npm test               # 262 testes unitários e de integração
+npm run test:e2e       # 10 testes ponta a ponta contra a stack (suba o compose antes)
+npm run lint && npm run typecheck
+```
+
+Para desenvolver com recarga automática, suba só as dependências e rode o agregador na máquina:
+
+```bash
+docker compose up -d --wait provider-a provider-b provider-c redis postgres jaeger
+cd aggregator && cp .env.example .env && npm run dev
+```
+
+### Problemas comuns
+
+| Sintoma | Causa e solução |
+|---|---|
+| `port is already allocated` / `address already in use` | outra aplicação usa uma das portas da tabela acima. Pare essa aplicação ou troque o número **da esquerda** no mapeamento `ports` do `docker-compose.yml` (ex.: `"8080:8000"`) |
+| `unknown flag: --wait` | Docker Compose antigo. Atualize o Docker ou rode sem `--wait` e acompanhe com `docker compose ps` |
+| `Cannot connect to the Docker daemon` | o Docker não está rodando. Abra o Docker Desktop (ou `sudo systemctl start docker`) |
+| O build falha baixando dependências (`npm ci` / `pip install`) | o container de build não resolve DNS (comum com VPN ou `systemd-resolved`). Configure um DNS no Docker (`"dns": ["8.8.8.8"]` em Docker Desktop → Settings → Docker Engine, ou em `/etc/docker/daemon.json`) e rode de novo |
+| A busca devolve **400** | data passada, mais de 365 dias à frente, IATA inválido ou origem igual ao destino. A resposta lista cada campo com erro |
+| `meta.partial: true` | algum provider falhou ou passou de 3 s. É o comportamento esperado (a resposta segue com os outros); veja `meta.providers` |
+| Grafana sem dados | ainda não houve buscas. Faça algumas e aguarde ~10 s |
+| `make: command not found` no Windows | use os comandos `docker compose` desta seção ou rode o `make` pelo Git Bash/WSL |
+
+---
+
+## 2. Checklist do desafio → evidência
 
 ### Requisitos obrigatórios
 
@@ -48,7 +199,7 @@ make health    # estado de todos os componentes
 | Normalização para modelo único | `domain/flight-offer.ts` + `infrastructure/providers/mappers/` | testes contra **respostas reais** dos mocks (fixtures) |
 | **Ordenação consistente** | `domain/sorting.ts` (preço → partida → duração → flightKey) | ordem total testada embaralhando a entrada; e2e compara 2 chamadas |
 | README com arquitetura e trade-offs | este arquivo + [11 ADRs](docs/adr) | — |
-| Docker Compose | `docker-compose.yml` (mesmo arquivo do desafio) | `make up` em máquina limpa + CI sobe a stack a cada commit |
+| Docker Compose | `docker-compose.yml` (mesmo arquivo do desafio; um comando sobe tudo) | clone limpo + `docker compose up`; a CI sobe a stack a cada commit |
 | Testes automatizados | 262 testes (unit + integração) + 10 e2e | `make test`, `make e2e`, CI |
 
 ### Regra de negócio
@@ -69,15 +220,15 @@ make health    # estado de todos os componentes
 | Logs estruturados | ✅ pino JSON com `requestId`, `searchId`, `traceId` | `interfaces/http/app.ts` |
 | Métricas Prometheus | ✅ `GET /metrics` (operação + negócio) | `infrastructure/observability/metrics.ts` |
 | Health check | ✅ `/health`, `/health/live`, `/health/ready` | `interfaces/http/routes/health.route.ts` |
-| GitHub Actions | ✅ CI + CD (workflows prontos; rodam no primeiro push) | `.github/workflows/` · [ADR 0011](docs/adr/0011-ci-cd-e-deploy.md) |
+| GitHub Actions | ✅ CI: lint, testes, build da imagem, stack inteira + smoke + e2e | `.github/workflows/ci.yml` · [ADR 0011](docs/adr/0011-ci-cd-e-deploy.md) |
 | Docker multi-stage | ✅ alpine, não-root, HEALTHCHECK | `aggregator/Dockerfile` |
 | Feature flags | ✅ OpenFeature, recarga a quente, por agência | `infrastructure/flags/` · [ADR 0010](docs/adr/0010-feature-flags.md) |
-| Deploy em cloud com IP público | ⏳ pipeline e scripts prontos; **aguarda VM e repositório** | [docs/DEPLOY.md](docs/DEPLOY.md) |
+| Deploy em cloud com IP público | ➖ fora do escopo desta entrega: a solução roda localmente com Docker | [ADR 0011](docs/adr/0011-ci-cd-e-deploy.md) (como seria) |
 | Banco + dashboard de insights | ✅ Postgres + Grafana provisionado | `infrastructure/persistence/` · [ADR 0009](docs/adr/0009-persistencia-e-dashboard.md) |
 
 ---
 
-## 2. Arquitetura
+## 3. Arquitetura
 
 ### Componentes
 
@@ -164,7 +315,7 @@ framework e o `application/` de importar infraestrutura ([ADR 0002](docs/adr/000
 
 ---
 
-## 3. Decisões e trade-offs
+## 4. Decisões e trade-offs
 
 | # | Decisão | Por quê (resumo) | ADR |
 |---|---|---|---|
@@ -178,14 +329,11 @@ framework e o `application/` de importar infraestrutura ([ADR 0002](docs/adr/000
 | 8 | Readiness **não** depende de Redis/Postgres | dependência opcional não pode tirar todas as réplicas do ar | [0008](docs/adr/0008-observabilidade.md) |
 | 9 | Persistência fire-and-forget com backpressure | analítico não atrasa nem derruba a busca | [0009](docs/adr/0009-persistencia-e-dashboard.md) |
 | 10 | OpenFeature com arquivo recarregado a quente | kill switch e A/B de τ sem deploy | [0010](docs/adr/0010-feature-flags.md) |
-| 11 | CI com a stack inteira; CD multi-arch → VM Oracle | o que roda em produção é o que a CI testou | [0011](docs/adr/0011-ci-cd-e-deploy.md) |
-
-Material de defesa (pitch, perguntas e respostas, pontos fracos, mapa do código):
-**[docs/DEFESA.md](docs/DEFESA.md)**.
+| 11 | CI com a stack inteira a cada commit; deploy fora do escopo | o comando do avaliador (`docker compose up`) é testado em máquina limpa | [0011](docs/adr/0011-ci-cd-e-deploy.md) |
 
 ---
 
-## 4. Regra de negócio: estratégia de seleção
+## 5. Regra de negócio: estratégia de seleção
 
 **O problema:** o incentivo é um **percentual do preço**. "Maximizar incentivo" sem limite
 significa escolher a passagem **mais cara**. A receita real é `P(emissão) × incentivo`, e preço
@@ -224,7 +372,7 @@ o simulate: **R$ 1,17 do cliente por R$ 1 ganho**.
 
 ---
 
-## 5. Resiliência
+## 6. Resiliência
 
 | Mecanismo | Configuração | Por quê |
 |---|---|---|
@@ -247,7 +395,7 @@ e a 3ª responde em 426 ms. A busca inteira levou 1,53 s, dentro do orçamento.*
 
 ---
 
-## 6. Cache
+## 7. Cache
 
 - **O quê:** a resposta **final** (já deduplicada e selecionada), em Redis.
 - **Chave:** `search:v1:{ORIG}:{DEST}:{DATA}:{estratégia:τ:teto:k}:{providers ligados}`. Trocar a
@@ -261,15 +409,15 @@ Detalhes: [ADR 0006](docs/adr/0006-cache-redis.md).
 
 ---
 
-## 7. Observabilidade
+## 8. Observabilidade
 
-| Ferramenta | Acesso (`make obs`) | O que mostra |
+| Ferramenta | Acesso | O que mostra |
 |---|---|---|
 | Grafana | http://localhost:3000 (leitura anônima; admin/admin) | dashboard "Agregador de Voos · Insights" |
 | Jaeger | http://localhost:16686 | um trace por busca: provider, tentativas, cache |
 | Prometheus | http://localhost:9090 | métricas brutas (`/metrics` do agregador) |
-| Logs | `make logs` | JSON com `requestId`, `searchId`, `traceId` |
-| Health | `make health` / `/health/live` / `/health/ready` | componentes, circuitos, versão |
+| Logs | `docker compose logs -f aggregator` | JSON com `requestId`, `searchId`, `traceId` |
+| Health | http://localhost:8000/health · `/health/live` · `/health/ready` | componentes, circuitos, versão |
 
 ![Dashboard Grafana: negócio, operação e demanda](docs/img/grafana-dashboard.png)
 
@@ -279,7 +427,7 @@ por provider; top rotas e antecedência.*
 
 ---
 
-## 8. Testes
+## 9. Testes
 
 ```bash
 make test   # unit + integração (Redis e Postgres reais via Testcontainers; requer Docker)
@@ -305,7 +453,7 @@ e `make load` (200 buscas únicas). Coleção de requisições: [`requests.http`
 
 ---
 
-## 9. Feature flags
+## 10. Feature flags
 
 OpenFeature com provider de arquivo ([`flags/flags.json`](flags/flags.json)), relido a cada 2 s,
 **sem restart nem deploy**. O valor pode ser por agência (header `x-agency-id`) e uma variável
@@ -325,17 +473,6 @@ Demonstrado ao vivo: com `provider.c.enabled=false`, a próxima busca veio com `
 
 ---
 
-## 10. Deploy
-
-- **Alvo:** VM **Oracle Cloud Always Free** (Ampere A1, ARM), rodando o mesmo `docker-compose.yml`.
-- **Pipeline:** push na `main` → CI (qualidade, testes, stack + smoke + e2e) → CD (imagem
-  **multi-arch** no GHCR → rsync + SSH → `deploy.sh` → smoke test pelo IP público).
-- **Status:** ⏳ scripts e workflows prontos e validados (shellcheck, actionlint, smoke test
-  local). **Faltam a VM e o repositório** (passo a passo em [docs/DEPLOY.md](docs/DEPLOY.md)).
-- **URL pública:** _a preencher após o primeiro deploy_ — `http://<IP>:8000/search` · Grafana `http://<IP>:3000`.
-
----
-
 ## 11. Limitações e próximos passos em produção
 
 | Tema | Hoje | Evolução |
@@ -347,7 +484,7 @@ Demonstrado ao vivo: com `provider.c.enabled=false`, a próxima busca veio com `
 | Cache | single-flight por processo | lock distribuído (`SET NX PX`) ou stale-while-revalidate |
 | Persistência | fire-and-forget (pode perder em pico) | outbox / fila (SQS, Kafka) → warehouse |
 | Latência com retry | p95 ~2,4 s quando um provider sofre | resposta progressiva (SSE por provider) ou soft deadline |
-| Escala | 1 VM | N réplicas atrás de LB, Redis/Postgres gerenciados, autoscaling por p95 |
+| Escala e deploy | 1 instância local (compose) | imagem imutável no registry, N réplicas atrás de LB, Redis/Postgres gerenciados, autoscaling por p95 |
 | Contratos | schemas Zod por provider | contract testing (Pact) com os fornecedores |
 | Operação | métricas e dashboards | SLOs (p99 < 3,5 s, parcial < 5%) + alertas |
 | Estratégia | τ calibrado no mock | τ calibrado por conversão real; receita esperada `P(emissão|Δ) × incentivo`; A/B por flag |
@@ -368,6 +505,9 @@ Nenhum arquivo de `mocks/` foi alterado (`git diff a31f827 -- mocks/` é vazio; 
 | 4 | `mocks/app/__pycache__/*.pyc` vinham no pacote | fora do git pelo `.gitignore`; bytecode conferido como idêntico ao `.py` |
 | 5 | Checkout no Windows converte o texto para CRLF, o que quebra Makefile e scripts em containers | `.gitattributes` com `eol=lf` |
 | 6 | Alvos `test/cov/lint/fmt` do Makefile chamavam `uv`/`pytest`/`ruff` | mesmos nomes, agora chamando npm ([ADR 0001](docs/adr/0001-linguagem-node-typescript.md)) |
+| 7 | `build.network: host` nos builds dos mocks: versões recentes do Docker Compose recusam o build sem `--allow=network.host` (a CI quebrou exatamente aí) | removido; o build usa a rede padrão. Para quem tem problema de DNS no build, a solução está em [Problemas comuns](#problemas-comuns) |
+| 8 | `make search`/`make health` dependiam de `python3` (ausente no Windows por padrão) | data calculada com `date` e JSON formatado com `jq` ou `node`, se existirem |
+| 9 | Observabilidade (Jaeger, Prometheus, Grafana) ficava num profile à parte | sobe junto no `docker compose up`, com o tracing já apontado para o Jaeger: um comando mostra tudo |
 
 **Taxas reais do chaos:** o mock sorteia o "pendurar" **antes** do 500. Com `0.3/0.3`: ~30%
 pendurado, ~21% de 500 e ~49% de sucesso por chamada ([docs/providers.md](docs/providers.md)).

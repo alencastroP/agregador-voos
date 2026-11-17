@@ -1,7 +1,8 @@
 # Coleção de requisições (VS Code REST Client / JetBrains HTTP Client).
-# Suba a stack com `make up` (ou `npm run dev` em aggregator/ com os mocks rodando).
+# Suba a stack com `docker compose up -d --build --wait` (ou `make up`).
 @base = http://localhost:8000
-@date = 2026-12-14
+# Data sempre futura (hoje + 30 dias). No JetBrains, troque por uma data fixa no futuro.
+@date = {{$datetime "YYYY-MM-DD" 30 d}}
 
 ### 1. Busca de sucesso
 POST {{base}}/search

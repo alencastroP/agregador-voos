@@ -1,4 +1,4 @@
-# Prometheus do profile `observability` (make obs).
+# Prometheus da stack (docker-compose.yml).
 # Raspa o /metrics do agregador a cada 5 s dentro da rede do compose.
 # (Um único alvo: um segundo apontando para a porta publicada no host contaria o MESMO
 # processo duas vezes e dobraria os contadores nos painéis.)

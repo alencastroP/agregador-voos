@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test da API: usado na CI (stack local) e no CD (IP público da VM).
-# Uso: deploy/smoke-test.sh <base-url> [versão-esperada]
+# Smoke test da API contra uma stack rodando (usado na CI; funciona em qualquer URL).
+# Uso: scripts/smoke-test.sh <base-url> [versão-esperada]   (requer bash, curl e jq)
 set -euo pipefail
 
 BASE="${1:?uso: smoke-test.sh <base-url> [versão]}"

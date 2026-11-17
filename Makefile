@@ -1,9 +1,12 @@
-.PHONY: up down restart logs ps test cov lint fmt search health chaos calm simulate load obs obs-down e2e
+.PHONY: up down stop restart logs ps test cov lint fmt search health chaos calm simulate load e2e
 
-up:            ## sobe tudo (providers + redis + agregador)
-	docker compose up -d --build
+up:            ## sobe a stack inteira (providers, agregador, redis, postgres, jaeger, prometheus, grafana)
+	docker compose up -d --build --wait
 
-down:          ## derruba tudo e limpa volumes
+stop:          ## para a stack mantendo os dados do Postgres
+	docker compose down
+
+down:          ## derruba tudo e apaga os volumes (dados do dashboard)
 	docker compose down -v
 
 restart:
@@ -31,32 +34,27 @@ lint:          ## eslint + prettier --check + tsc --noEmit
 fmt:
 	cd aggregator && npm run format
 
-PYTHON ?= python3
 ORIGIN ?= GRU
 DEST   ?= GIG
 # Data dinâmica (hoje + 30 dias): uma data fixa vira "data passada" e é rejeitada.
-# Sobrescreva com `make search SEARCH_DATE=2026-12-12`.
-SEARCH_DATE ?= $(shell $(PYTHON) -c "import datetime as d; print(d.date.today() + d.timedelta(days=30))")
+# GNU date (Linux, Git Bash) ou BSD date (macOS). Sobrescreva com `make search SEARCH_DATE=2026-12-12`.
+SEARCH_DATE ?= $(shell date -d '+30 days' +%F 2>/dev/null || date -v+30d +%F)
+# Formata o JSON com o que houver na máquina (jq ou node); sem nenhum dos dois, imprime cru.
+PRETTY = { if command -v jq >/dev/null 2>&1; then jq .; elif command -v node >/dev/null 2>&1; then node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s),null,2)))'; else cat; fi; }
 
 search:        ## busca de exemplo
 	@curl -s -X POST localhost:8000/search \
 		-H 'Content-Type: application/json' \
-		-d '{"origin":"$(ORIGIN)","destination":"$(DEST)","date":"$(SEARCH_DATE)"}' | $(PYTHON) -m json.tool
+		-d '{"origin":"$(ORIGIN)","destination":"$(DEST)","date":"$(SEARCH_DATE)"}' | $(PRETTY)
 
-health:
-	@curl -s localhost:8000/health | $(PYTHON) -m json.tool
+health:        ## estado de cada componente
+	@curl -s localhost:8000/health | $(PRETTY)
 
 chaos:         ## provider-c derrubando ~21% e pendurando ~30% das chamadas
 	docker compose -f docker-compose.yml -f docker-compose.chaos.yml up -d --no-deps provider-c
 
 calm:          ## desliga o chaos (recria o provider-c com a config original)
 	docker compose up -d --no-deps provider-c
-
-obs:           ## sobe tudo + Jaeger (16686), Prometheus (9090) e Grafana (3000)
-	OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile observability up -d --build
-
-obs-down:
-	docker compose --profile observability down
 
 simulate:      ## compara as estratégias de seleção sobre buscas reais dos mocks
 	cd aggregator && npm run simulate

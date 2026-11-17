@@ -83,7 +83,7 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 180
 
       - name: Smoke test
-        run: bash deploy/smoke-test.sh http://localhost:8000
+        run: bash scripts/smoke-test.sh http://localhost:8000
 
       - uses: actions/setup-node@v4
         with:

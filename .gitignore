@@ -14,3 +14,8 @@ coverage/
 *.tsbuildinfo
 .env.*
 !.env.example
+
+# Material pessoal de preparação (roteiro, defesa, resumo da configuração): só local
+docs/APRESENTACAO.md
+docs/DEFESA.md
+docs/CONFIGURACAO.md
