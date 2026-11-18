@@ -319,7 +319,7 @@ framework e o `application/` de importar infraestrutura ([ADR 0002](docs/adr/000
 
 | # | Decisão | Por quê (resumo) | ADR |
 |---|---|---|---|
-| 1 | Node 22 + TypeScript (o scaffold sugere Python) | defendo linha a linha; a interface `make` do avaliador ficou igual | [0001](docs/adr/0001-linguagem-node-typescript.md) |
+| 1 | Node 22 + TypeScript (o scaffold sugere Python) | stack de domínio da autoria; a interface `make` do scaffold ficou igual | [0001](docs/adr/0001-linguagem-node-typescript.md) |
 | 2 | Hexagonal com DI manual, Fastify, Zod | regra de negócio testável sem rede; sem a "mágica" de framework | [0002](docs/adr/0002-arquitetura-hexagonal.md) |
 | 3 | Modelo canônico só com dados reais; dinheiro em centavos; hora local sem fuso | não inventar número de voo/escala; nunca float para preço | [0003](docs/adr/0003-modelo-canonico-e-normalizacao.md) |
 | 4 | Estratégia **Balanced** (banda τ = 1,5% + teto R$ 25) | captura 43% do ganho máximo com 15% do custo para o cliente | [0004](docs/adr/0004-estrategia-de-selecao.md) |
@@ -329,7 +329,7 @@ framework e o `application/` de importar infraestrutura ([ADR 0002](docs/adr/000
 | 8 | Readiness **não** depende de Redis/Postgres | dependência opcional não pode tirar todas as réplicas do ar | [0008](docs/adr/0008-observabilidade.md) |
 | 9 | Persistência fire-and-forget com backpressure | analítico não atrasa nem derruba a busca | [0009](docs/adr/0009-persistencia-e-dashboard.md) |
 | 10 | OpenFeature com arquivo recarregado a quente | kill switch e A/B de τ sem deploy | [0010](docs/adr/0010-feature-flags.md) |
-| 11 | CI com a stack inteira a cada commit; deploy fora do escopo | o comando do avaliador (`docker compose up`) é testado em máquina limpa | [0011](docs/adr/0011-ci-cd-e-deploy.md) |
+| 11 | CI com a stack inteira a cada commit; deploy fora do escopo | o comando de quem clona (`docker compose up`) é testado em máquina limpa | [0011](docs/adr/0011-ci-cd-e-deploy.md) |
 
 ---
 

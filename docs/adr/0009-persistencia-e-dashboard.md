@@ -55,7 +55,7 @@ leitura**: o dashboard nunca escreve.
 
 **As queries são testadas:** um teste de integração lê o JSON do dashboard, expande as macros
 do Grafana e executa toda query SQL contra o Postgres real com dados de uma busca. Um painel
-quebrado falha na CI, não na apresentação. O JSON é gerado por
+quebrado falha na CI, não em produção. O JSON é gerado por
 `observability/grafana/build_dashboard.py`.
 
 ## Evidência (ao vivo: 240 buscas, normais + chaos + repetidas)
@@ -77,7 +77,7 @@ mais tempo.
 
 ## Consequências
 
-- (+) O argumento de negócio da apresentação ("quanto a estratégia gerou e quanto custou ao
+- (+) O argumento de negócio ("quanto a estratégia gerou e quanto custou ao
   cliente") sai do dado real, não de planilha.
 - (−) `selected_offers` cresce ~60 linhas por busca calculada. Evolução: particionar por mês e
   agregar em tabelas diárias; reter o detalhe por 90 dias.

@@ -107,7 +107,7 @@ configurável por feature flag, para um A/B ou para endurecer a regra sem deploy
 |---|---|---|
 | Incentivo | **+12,2%** | +0% neste dataset |
 | Cliente | paga +1,2% em 1 a cada 6 voos (~R$ 9 por voo afetado) | nunca paga a mais sem a empresa ganhar pelo menos o mesmo |
-| Defesa | "1,2% está dentro da variação normal de tarifa e é limitado por τ e pelo teto: não é *significativo*" | "Só troco quando gero mais valor do que transfiro: a soma empresa + cliente nunca piora" |
+| Argumento | "1,2% está dentro da variação normal de tarifa e é limitado por τ e pelo teto: não é *significativo*" | "Só troco quando gero mais valor do que transfiro: a soma empresa + cliente nunca piora" |
 | Risco | percepção de "plataforma que não mostra o mais barato" | deixa receita na mesa; aqui equivale ao cheapest |
 
 O limiar exato é **k ≈ 0,85**: abaixo dele a troca A→C acontece; acima, não.

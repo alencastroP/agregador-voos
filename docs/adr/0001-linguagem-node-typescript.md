@@ -7,13 +7,13 @@
 
 O scaffold do desafio sugere um agregador em Python: o `Makefile` chama `uv run pytest`/`ruff`, o
 `.gitignore` é voltado a Python e os mocks são FastAPI. O enunciado, porém, **não exige
-linguagem**: pede um `POST /search`, Docker Compose e testes. O critério de avaliação é a revisão
-técnica ao vivo, em que preciso defender cada linha.
+linguagem**: pede um `POST /search`, Docker Compose e testes. O código será lido e discutido linha a
+linha, então a linguagem precisa ser uma em que cada decisão fina possa ser justificada.
 
 ## Decisão
 
 Node.js 22 LTS + TypeScript em modo `strict`, na pasta `aggregator/`, mantendo **intacta a
-interface de quem avalia**:
+interface de quem usa o projeto**:
 
 | Contrato implícito do scaffold | Mantido? |
 |---|---|
@@ -24,17 +24,17 @@ interface de quem avalia**:
 ## Alternativas consideradas
 
 1. **Python (FastAPI + httpx + pydantic + pytest).** Alinha com o scaffold e com os mocks. Foi
-   descartada porque meu domínio é TypeScript, e defender decisões finas (cancelamento de
-   requisição, event loop, tipagem) é mais sólido na stack que uso no dia a dia.
-2. **Go.** Ótimo para I/O concorrente, mas é uma stack em que não consigo defender idiomatismos ao
-   vivo com a mesma profundidade.
+   descartada porque o domínio da autoria é TypeScript, e justificar decisões finas (cancelamento
+   de requisição, event loop, tipagem) é mais sólido na stack de uso diário.
+2. **Go.** Ótimo para I/O concorrente, mas é uma stack em que a autoria não tem a mesma
+   profundidade nos idiomatismos.
 
 ## Consequências
 
-- (+) Defesa linha a linha numa stack de domínio; tipos compartilhados com um front React, se
+- (+) Decisões justificáveis linha a linha, numa stack de domínio; tipos compartilhados com um front React, se
   houver.
 - (+) `fetch`/undici nativo com `AbortController` cancela a requisição de verdade no timeout.
-- (−) Quem avalia esperando Python encontra outra linguagem. Mitigação: a interface `make` é
+- (−) Quem espera Python encontra outra linguagem. Mitigação: a interface `make` é
   idêntica e este ADR explica a troca.
 - (−) `make test/cov/lint/fmt` passam a exigir Node 22 instalado, ou podem rodar via container
   na CI.

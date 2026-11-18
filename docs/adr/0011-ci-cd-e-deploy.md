@@ -5,8 +5,8 @@
 
 ## Contexto
 
-Bônus: GitHub Actions, Docker multi-stage e deploy em cloud com rota via IP público. O que o
-avaliador faz de fato é clonar o repositório e rodar `docker compose up`. Esse caminho precisa
+Bônus: GitHub Actions, Docker multi-stage e deploy em cloud com rota via IP público. O que quem
+avalia ou usa o projeto faz de fato é clonar o repositório e rodar `docker compose up`. Esse caminho precisa
 funcionar em qualquer máquina com Docker, sem `.env`, sem Node e sem Python.
 
 ## Decisões
@@ -53,12 +53,12 @@ entrega.
 ## Alternativas consideradas
 
 - **Manter o CD desligado no repositório:** mostraria intenção, mas um workflow que nunca rodou
-  com sucesso é exatamente o tipo de artefato que não dá para defender.
+  com sucesso é exatamente o tipo de artefato que não se sustenta.
 - **Túnel (Cloudflare Tunnel/ngrok) da máquina local:** expõe uma URL, mas não é deploy em cloud.
 
 ## Consequências
 
-- (+) O caminho do avaliador (`git clone` + `docker compose up`) é o que a CI testa.
+- (+) O caminho de quem clona (`git clone` + `docker compose up`) é o que a CI testa.
 - (+) Rollback e kill switch locais: `git checkout` de um SHA anterior; `flags/flags.json` sem
   restart.
-- (−) Não há URL pública para a demo; ela roda na máquina do apresentador.
+- (−) Não há URL pública para a demo; ela roda na máquina de quem executa.
